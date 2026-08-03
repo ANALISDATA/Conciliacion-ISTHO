@@ -28,6 +28,13 @@ NARANJA = "#E08700"       # ámbar: requiere revisión
 ROJO = "#DC2743"          # pendiente / salida
 GRIS = "#64748B"          # neutro
 
+# Dorado: se usa SOLO en la pantalla de acceso. En finanzas el oro comunica valor y
+# categoría, pero dentro de las tablas competiría con el ámbar de "requiere revisión",
+# así que se mantiene fuera del área de trabajo.
+ORO = "#D4AF37"
+ORO_CLARO = "#F0D98B"
+ORO_OSCURO = "#A87F22"
+
 _SIDEBAR_TOP = "#14245C"
 _SIDEBAR_BOT = "#0A1233"
 _TEXTO = "#152036"
@@ -672,3 +679,195 @@ def tabla(df, height=780, row_height=34, ocultar=OCULTAR_EN_PANTALLA):
     st.dataframe(df, use_container_width=True, hide_index=True,
                  height=min(height, 60 + len(df) * row_height),
                  row_height=row_height, column_config=column_config)
+
+
+# ===========================================================================
+# PANTALLA DE ACCESO
+#
+# Azul marino profundo con acentos dorados: en interfaces financieras el azul
+# comunica confianza y el oro señala categoría. El dorado se usa SOLO aquí; en
+# las tablas competiría con el ámbar de "requiere revisión".
+# ===========================================================================
+
+# Retícula de nodos y trazos: alude a la trazabilidad del dinero sin caer en
+# iconos literales de billetes, que restarían seriedad.
+_PATRON_LOGIN = """
+<svg xmlns='http://www.w3.org/2000/svg' width='260' height='260'>
+  <g fill='none' stroke='%23D4AF37' stroke-opacity='0.10' stroke-width='1'>
+    <path d='M20 60 L90 60 L120 30 L210 30'/>
+    <path d='M0 150 L60 150 L95 185 L180 185 L215 150 L260 150'/>
+    <path d='M140 0 L140 55 L200 90 L200 140'/>
+    <path d='M40 230 L100 230 L130 200'/>
+  </g>
+  <g fill='none' stroke='%233B82F6' stroke-opacity='0.12' stroke-width='1'>
+    <path d='M0 95 L45 95 L75 125 L160 125'/>
+    <path d='M225 200 L250 225 L250 260'/>
+  </g>
+  <g fill='%23D4AF37' fill-opacity='0.22'>
+    <circle cx='90' cy='60' r='2.6'/><circle cx='180' cy='185' r='2.6'/>
+    <circle cx='200' cy='90' r='2.6'/><circle cx='100' cy='230' r='2.6'/>
+  </g>
+  <g fill='%233B82F6' fill-opacity='0.26'>
+    <circle cx='45' cy='95' r='2.6'/><circle cx='160' cy='125' r='2.6'/>
+    <circle cx='140' cy='55' r='2.6'/>
+  </g>
+</svg>
+""".replace("\n", "").replace("  ", "")
+
+
+def login_css():
+    """Estilos exclusivos de la pantalla de acceso. Se inyectan solo cuando se
+    muestra el login, para no teñir de azul oscuro el resto de la aplicación."""
+    st.markdown(f"""
+    <style>
+    /* Fondo a pantalla completa: degradado marino con halos dorado y azul */
+    .stApp {{
+        background:
+            radial-gradient(circle at 14% 18%, rgba(212,175,55,0.13), transparent 44%),
+            radial-gradient(circle at 86% 80%, rgba(59,130,246,0.20), transparent 46%),
+            linear-gradient(155deg, #050B1A 0%, #0C1E40 46%, #061020 100%) !important;
+    }}
+    .stApp::before {{
+        content: ""; position: fixed; inset: 0; pointer-events: none;
+        background-image: url("data:image/svg+xml,{_PATRON_LOGIN}");
+        background-repeat: repeat; opacity: 0.75;
+    }}
+
+    /* En el acceso no hay nada que configurar: se oculta el panel lateral */
+    section[data-testid="stSidebar"] {{ display: none !important; }}
+    .block-container {{ padding-top: 5vh !important; max-width: 1100px !important; }}
+
+    /* ---------------- Tarjeta ---------------- */
+    div[class*="st-key-login_card"] {{
+        position: relative;
+        background: rgba(255,255,255,0.045) !important;
+        border: 1px solid rgba(212,175,55,0.26) !important;
+        border-radius: 20px !important;
+        padding: 2.3rem 2.2rem 1.6rem !important;
+        box-shadow: 0 30px 70px rgba(0,0,0,0.55), inset 0 1px 0 rgba(255,255,255,0.07);
+        backdrop-filter: blur(16px);
+    }}
+    /* Filo dorado superior, como el canto de un documento de valor */
+    div[class*="st-key-login_card"]::before {{
+        content: ""; position: absolute; top: 0; left: 14%; right: 14%; height: 2px;
+        background: linear-gradient(90deg, transparent, {ORO}, {ORO_CLARO}, {ORO}, transparent);
+        border-radius: 2px;
+    }}
+
+    .istho-login-cab {{ text-align: center; margin-bottom: 1.5rem; }}
+    .istho-login-logo {{
+        height: 54px; background: #fff; padding: 9px 14px; border-radius: 13px;
+        box-shadow: 0 10px 26px rgba(0,0,0,0.42), 0 0 0 1px rgba(212,175,55,0.30);
+        margin-bottom: 1.15rem;
+    }}
+    .istho-login-eyebrow {{
+        color: {ORO}; font-size: 0.68rem; font-weight: 700;
+        text-transform: uppercase; letter-spacing: 0.22em; margin-bottom: 0.5rem;
+    }}
+    .istho-login-cab h1 {{
+        color: #FFFFFF; font-family: 'Sora', sans-serif;
+        font-size: 1.72rem; font-weight: 800; margin: 0; letter-spacing: -0.02em;
+    }}
+    .istho-login-cab p {{
+        color: rgba(226,236,255,0.62); font-size: 0.86rem; margin: 0.45rem 0 0;
+    }}
+    .istho-login-sep {{
+        width: 54px; height: 2px; margin: 1.2rem auto 0; border-radius: 2px;
+        background: linear-gradient(90deg, transparent, {ORO}, transparent);
+    }}
+
+    /* ---------------- Campo de clave ---------------- */
+    div[class*="st-key-login_card"] label p {{
+        color: rgba(226,236,255,0.78) !important;
+        font-size: 0.76rem !important; font-weight: 600 !important;
+        text-transform: uppercase; letter-spacing: 0.09em;
+    }}
+    /* OJO: en esta versión el fondo blanco lo pone stTextInputRootElement; el atributo
+       data-baseweb ya no existe, así que hay que apuntar a ese testid o el campo queda
+       blanco y el texto se vuelve ilegible sobre la tarjeta oscura. */
+    div[class*="st-key-login_card"] [data-testid="stTextInputRootElement"] {{
+        background: rgba(255,255,255,0.07) !important;
+        border: 1px solid rgba(255,255,255,0.16) !important;
+        border-radius: 12px !important;
+        transition: border-color .16s ease, box-shadow .16s ease;
+    }}
+    div[class*="st-key-login_card"] [data-testid="stTextInputRootElement"]:focus-within {{
+        border-color: {ORO} !important;
+        box-shadow: 0 0 0 3px rgba(212,175,55,0.16) !important;
+    }}
+    /* El botón de "ver clave" vive dentro del campo: se le quita el dorado del botón
+       principal para que no compita con la acción de ingresar. */
+    div[class*="st-key-login_card"] [data-testid="stTextInputRootElement"] button {{
+        background: transparent !important; box-shadow: none !important;
+        border: none !important; padding: 0 0.6rem !important;
+    }}
+    div[class*="st-key-login_card"] [data-testid="stTextInputRootElement"] svg {{
+        fill: rgba(226,236,255,0.50);
+    }}
+    div[class*="st-key-login_card"] input {{
+        background: transparent !important; color: #F3F7FF !important;
+        padding: 0.72rem 0.3rem !important; font-size: 0.95rem !important;
+    }}
+    div[class*="st-key-login_card"] input::placeholder {{ color: rgba(226,236,255,0.34) !important; }}
+    div[class*="st-key-login_card"] [data-testid="stWidgetLabel"] {{ margin-bottom: 0.4rem; }}
+    div[class*="st-key-login_card"] svg {{ fill: rgba(226,236,255,0.55); }}
+
+    /* ---------------- Botón dorado ---------------- */
+    div[class*="st-key-login_card"] button {{
+        background: linear-gradient(135deg, {ORO_OSCURO} 0%, {ORO} 42%, {ORO_CLARO} 100%) !important;
+        color: #0E1B33 !important; border: none !important; border-radius: 12px !important;
+        font-weight: 800 !important; font-size: 0.88rem !important;
+        letter-spacing: 0.1em; text-transform: uppercase;
+        padding: 0.78rem 1rem !important; margin-top: 0.35rem;
+        box-shadow: 0 10px 26px rgba(212,175,55,0.30);
+        transition: transform .13s ease, box-shadow .13s ease, filter .13s ease;
+    }}
+    div[class*="st-key-login_card"] button p {{
+        color: #0E1B33 !important; font-weight: 800 !important; letter-spacing: 0.1em;
+    }}
+    div[class*="st-key-login_card"] button:hover {{
+        filter: brightness(1.07); transform: translateY(-1px);
+        box-shadow: 0 14px 32px rgba(212,175,55,0.40);
+    }}
+
+    /* Aviso de clave incorrecta, en tono sobrio */
+    div[class*="st-key-login_card"] div[data-testid="stAlertContainer"] {{
+        background: rgba(220,39,67,0.13) !important;
+        border: 1px solid rgba(220,39,67,0.36) !important;
+        border-radius: 11px !important;
+    }}
+    div[class*="st-key-login_card"] div[data-testid="stAlertContainer"] p {{
+        color: #FFC9D2 !important; font-size: 0.84rem !important;
+    }}
+
+    .istho-login-pie {{
+        text-align: center; margin-top: 1.15rem;
+        color: rgba(226,236,255,0.40); font-size: 0.75rem; line-height: 1.7;
+    }}
+    .istho-login-pie b {{ color: rgba(212,175,55,0.85); font-weight: 700; }}
+    </style>
+    """, unsafe_allow_html=True)
+
+
+def login_encabezado(titulo, subtitulo, eyebrow="Área financiera"):
+    logo_b64 = _logo_b64()
+    logo = (f'<img src="data:image/png;base64,{logo_b64}" class="istho-login-logo" />'
+            if logo_b64 else "")
+    st.markdown(_flat(f"""
+    <div class="istho-login-cab">
+        {logo}
+        <div class="istho-login-eyebrow">{eyebrow}</div>
+        <h1>{titulo}</h1>
+        <p>{subtitulo}</p>
+        <div class="istho-login-sep"></div>
+    </div>
+    """), unsafe_allow_html=True)
+
+
+def login_pie(empresa):
+    st.markdown(_flat(f"""
+    <div class="istho-login-pie">
+        <b>{empresa}</b><br>
+        Acceso restringido · Si no tienes la clave, solicítala al área financiera.
+    </div>
+    """), unsafe_allow_html=True)

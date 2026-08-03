@@ -9,10 +9,14 @@ from conciliacion import (construir_vistas, crear_cruce_manual, eliminar_cruces,
 from config import CLAVE_ACCESO
 from excel_export import (CUENTA_DEFECTO, EMPRESA, LOGO_PATH, NIT, build_tabla_workbook,
                            periodo_desde_fechas)
-from ui import (GRIS, NARANJA, ROJO, VERDE, VERDE_OSC, badge, hero, inject_css, loader, section,
-                 sidebar_brand, sidebar_step, stat_cards, tabla)
+from ui import (GRIS, NARANJA, ROJO, VERDE, VERDE_OSC, badge, hero, inject_css, loader,
+                 login_css, login_encabezado, login_pie, section, sidebar_brand, sidebar_step,
+                 stat_cards, tabla)
 
-st.set_page_config(page_title="Conciliación Bancaria", layout="wide", page_icon="🔷")
+# El ícono de la pestaña del navegador es el propio logo; si el archivo no estuviera,
+# se cae a un rombo para que la app no falle al arrancar.
+st.set_page_config(page_title="Conciliación Bancaria", layout="wide",
+                   page_icon=LOGO_PATH if os.path.exists(LOGO_PATH) else "🔷")
 
 inject_css()
 
@@ -27,22 +31,23 @@ def acceso_permitido():
     if st.session_state.get("acceso_ok"):
         return True
 
-    hero("Conciliación Bancaria", "Acceso restringido — ingresa la clave para continuar",
-         empresa=EMPRESA, periodo="Uso interno")
-
-    _, centro, _ = st.columns([1, 1.6, 1])
+    login_css()
+    _, centro, _ = st.columns([1, 1.45, 1])
     with centro:
-        with st.form("acceso"):
-            clave = st.text_input("Clave de acceso", type="password",
-                                  placeholder="Escribe la clave")
-            if st.form_submit_button("Entrar", type="primary", use_container_width=True):
-                # compare_digest evita filtrar la clave por el tiempo que tarda la comparación
-                if hmac.compare_digest(clave, CLAVE_ACCESO):
-                    st.session_state["acceso_ok"] = True
-                    st.rerun()
-                else:
-                    st.error("Clave incorrecta.")
-        st.caption("Si no tienes la clave, solicítala al área financiera.")
+        with st.container(key="login_card"):
+            login_encabezado("Conciliación Bancaria",
+                             "Cruce del extracto bancario contra el libro auxiliar")
+            with st.form("acceso", border=False):
+                clave = st.text_input("Clave de acceso", type="password",
+                                      placeholder="Ingresa tu clave")
+                if st.form_submit_button("Ingresar", use_container_width=True):
+                    # compare_digest evita filtrar la clave por el tiempo de comparación
+                    if hmac.compare_digest(clave, CLAVE_ACCESO):
+                        st.session_state["acceso_ok"] = True
+                        st.rerun()
+                    else:
+                        st.error("Clave incorrecta. Vuelve a intentarlo.")
+        login_pie(EMPRESA)
     return False
 
 
