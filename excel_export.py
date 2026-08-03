@@ -5,13 +5,12 @@ import os
 import pandas as pd
 import xlsxwriter
 
-# Coloca aquí el logo de ISTHO S.A.S. (idealmente PNG con fondo transparente) con este
-# nombre exacto y se insertará automáticamente en el encabezado de los dos Excel.
+# Logo del membrete: PNG con este nombre exacto en esta misma carpeta.
 LOGO_PATH = os.path.join(os.path.dirname(__file__), "logo_istho.png")
 
-EMPRESA = "ISTHO S.A.S."
-NIT = "901.218.382-4"
-CUENTA_DEFECTO = "BANCOLOMBIA 255-000119-91"
+# El nombre de la empresa, el NIT y la cuenta ya no están escritos aquí: se leen de la
+# configuración privada (ver config.py), para que el código pueda publicarse sin exponerlos.
+from config import CUENTA_DEFECTO, EMPRESA, NIT  # noqa: E402  (re-exportados por compatibilidad)
 
 MESES = {1: "Enero", 2: "Febrero", 3: "Marzo", 4: "Abril", 5: "Mayo", 6: "Junio",
          7: "Julio", 8: "Agosto", 9: "Septiembre", 10: "Octubre", 11: "Noviembre", 12: "Diciembre"}

@@ -1,3 +1,4 @@
+import hmac
 import os
 from datetime import datetime
 
@@ -5,14 +6,48 @@ import streamlit as st
 
 from conciliacion import (construir_vistas, crear_cruce_manual, eliminar_cruces, load_extracto,
                            load_libro_auxiliar, reconciliar, resumen_cruces)
+from config import CLAVE_ACCESO
 from excel_export import (CUENTA_DEFECTO, EMPRESA, LOGO_PATH, NIT, build_tabla_workbook,
                            periodo_desde_fechas)
 from ui import (GRIS, NARANJA, ROJO, VERDE, VERDE_OSC, badge, hero, inject_css, loader, section,
                  sidebar_brand, sidebar_step, stat_cards, tabla)
 
-st.set_page_config(page_title="Conciliación Bancaria - ISTHO SAS", layout="wide", page_icon="🟢")
+st.set_page_config(page_title="Conciliación Bancaria", layout="wide", page_icon="🔷")
 
 inject_css()
+
+
+# ------------------------------------------------------------------ Acceso --
+def acceso_permitido():
+    """Puerta de entrada. La app queda publicada en una dirección pública, así que sin la
+    clave no se muestra ningún dato. Si no hay clave configurada (uso en el computador),
+    no se pide nada."""
+    if not CLAVE_ACCESO:
+        return True
+    if st.session_state.get("acceso_ok"):
+        return True
+
+    hero("Conciliación Bancaria", "Acceso restringido — ingresa la clave para continuar",
+         empresa=EMPRESA, periodo="Uso interno")
+
+    _, centro, _ = st.columns([1, 1.6, 1])
+    with centro:
+        with st.form("acceso"):
+            clave = st.text_input("Clave de acceso", type="password",
+                                  placeholder="Escribe la clave")
+            if st.form_submit_button("Entrar", type="primary", use_container_width=True):
+                # compare_digest evita filtrar la clave por el tiempo que tarda la comparación
+                if hmac.compare_digest(clave, CLAVE_ACCESO):
+                    st.session_state["acceso_ok"] = True
+                    st.rerun()
+                else:
+                    st.error("Clave incorrecta.")
+        st.caption("Si no tienes la clave, solicítala al área financiera.")
+    return False
+
+
+if not acceso_permitido():
+    st.stop()
 
 # ---------------------------------------------------------------- Sidebar --
 sidebar_brand()
