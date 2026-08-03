@@ -1,0 +1,15 @@
+# Librerías que necesita la app. El servidor las instala solo al desplegar.
+# Se fija una versión MÍNIMA (no exacta) para que el servidor pueda usar la más
+# reciente compatible sin fallar por falta de wheels para su versión de Python.
+
+# La interfaz usa st.segmented_control y anchos de columna en píxeles, que existen
+# a partir de 1.50; con una versión anterior la navegación y las tablas se rompen.
+streamlit>=1.50
+
+# El código funciona tanto con pandas 2 como con 3: la conversión de celdas vacías
+# se hace valor por valor justamente porque astype(str) se comporta distinto entre
+# las dos versiones (ver DOCUMENTACION.md).
+pandas>=2.2
+
+openpyxl>=3.1        # leer .xlsx
+XlsxWriter>=3.2      # generar los Excel con membrete

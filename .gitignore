@@ -1,0 +1,34 @@
+# ---------------------------------------------------------------------------
+# LO MÁS IMPORTANTE: datos financieros reales y credenciales.
+# Una vez que un archivo entra al historial de Git, borrarlo después NO lo saca
+# del historial. Por eso se excluyen desde el primer commit.
+# ---------------------------------------------------------------------------
+
+# Extractos bancarios y libros auxiliares (movimientos reales de la empresa)
+*.xlsx
+*.xls
+*.csv
+
+# Claves de Supabase y de cualquier otro servicio
+.streamlit/secrets.toml
+.env
+*.key
+*.pem
+
+# ---------------------------------------------------------------------------
+# Archivos temporales de Python
+# ---------------------------------------------------------------------------
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+
+# ---------------------------------------------------------------------------
+# Sistema operativo y editores
+# ---------------------------------------------------------------------------
+Thumbs.db
+desktop.ini
+.DS_Store
+.vscode/
+.idea/
