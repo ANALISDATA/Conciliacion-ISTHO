@@ -4,8 +4,11 @@ Aplicación web que cruza automáticamente el **extracto bancario** contra el **
 contable**, permite conciliar y desconciliar a mano, y genera los informes en Excel con el
 membrete de la empresa.
 
-> La explicación completa del funcionamiento y de la lógica de cruce está en
-> **[DOCUMENTACION.md](DOCUMENTACION.md)**.
+> **Documentación** (carpeta [`documentos/`](documentos/)):
+> - **[NECESIDAD-Y-BENEFICIO.md](documentos/NECESIDAD-Y-BENEFICIO.md)** — qué problema
+>   resuelve, cuánto tiempo ahorra y con qué cifras se midió.
+> - **[DOCUMENTACION.md](documentos/DOCUMENTACION.md)** — cómo funciona por dentro: el
+>   motor de cruce, el modelo de datos y las trampas ya encontradas.
 
 ---
 

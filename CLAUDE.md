@@ -3,7 +3,7 @@
 App local de **conciliación bancaria** para ISTHO S.A.S. (Streamlit + pandas).
 Cruza el extracto de Bancolombia contra el libro auxiliar contable.
 
-## 📖 Leer primero: `DOCUMENTACION.md`
+## 📖 Leer primero: `documentos/DOCUMENTACION.md`
 
 Ese archivo tiene todo: formato de los datos, las pasadas del algoritmo de cruce, el modelo
 de estado para conciliar/desconciliar, la interfaz, la exportación a Excel y las trampas ya
