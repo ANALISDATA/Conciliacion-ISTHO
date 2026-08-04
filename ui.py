@@ -90,8 +90,18 @@ def inject_css():
        barra de navegación, dejándola sin poder pulsar. Se selecciona por atributo y se
        le quitan los eventos de puntero, devolviéndoselos solo a sus propios botones. */
     [data-testid="stHeader"] {{ background: transparent; pointer-events: none; }}
-    [data-testid="stToolbar"] {{ pointer-events: none; }}
-    [data-testid="stToolbar"] > * {{ pointer-events: auto; }}
+
+    /* Se ocultan los accesos de desarrollo: Fork, GitHub, "Manage app", el menú de
+       opciones y la insignia de Streamlit. Quien entra solo debe ver la conciliación,
+       sin puertas al código ni a la configuración del servidor. */
+    [data-testid="stToolbar"],
+    [data-testid="manage-app-button"],
+    [data-testid="stStatusWidget"],
+    [data-testid="stDecoration"],
+    #MainMenu, footer,
+    .viewerBadge_container__1QSob,
+    a[href*="streamlit.io/cloud"],
+    a[href*="share.streamlit.io"] {{ display: none !important; }}
     div[data-testid="stElementContainer"]:has(> div:empty) {{ display: none; }}
 
     /* ==================== SIDEBAR OSCURO ==================== */

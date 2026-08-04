@@ -5,5 +5,14 @@ secondaryBackgroundColor = "#FFFFFF"
 textColor = "#152036"
 font = "sans serif"
 
+[client]
+# Oculta las herramientas de desarrollo (Fork, GitHub, Manage app, menú de opciones).
+# Quien entre solo debe ver la conciliación, sin accesos al código ni a la configuración.
+toolbarMode = "minimal"
+
+# Los errores se muestran resumidos: el detalle técnico solo sirve a quien programa
+# y puede revelar rutas internas.
+showErrorDetails = "stacktrace"
+
 [browser]
 gatherUsageStats = false
