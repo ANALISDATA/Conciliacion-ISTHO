@@ -723,9 +723,9 @@ def login_css():
     /* Fondo a pantalla completa: degradado marino con halos dorado y azul */
     .stApp {{
         background:
-            radial-gradient(circle at 14% 18%, rgba(212,175,55,0.13), transparent 44%),
-            radial-gradient(circle at 86% 80%, rgba(59,130,246,0.20), transparent 46%),
-            linear-gradient(155deg, #050B1A 0%, #0C1E40 46%, #061020 100%) !important;
+            radial-gradient(circle at 12% 16%, rgba(212,175,55,0.18), transparent 45%),
+            radial-gradient(circle at 88% 84%, rgba(34,211,238,0.18), transparent 46%),
+            linear-gradient(135deg, #0C1740 0%, #1B3A9E 52%, #10245E 100%) !important;
     }}
     .stApp::before {{
         content: ""; position: fixed; inset: 0; pointer-events: none;
@@ -738,13 +738,15 @@ def login_css():
     .block-container {{ padding-top: 5vh !important; max-width: 1100px !important; }}
 
     /* ---------------- Tarjeta ---------------- */
+    /* Sobre el azul vivo del encabezado la tarjeta va en azul profundo translúcido: si
+       fuera blanca translúcida se fundiría con el fondo y el texto perdería contraste. */
     div[class*="st-key-login_card"] {{
         position: relative;
-        background: rgba(255,255,255,0.045) !important;
-        border: 1px solid rgba(212,175,55,0.26) !important;
+        background: rgba(8, 18, 52, 0.62) !important;
+        border: 1px solid rgba(212,175,55,0.34) !important;
         border-radius: 20px !important;
         padding: 2.3rem 2.2rem 1.6rem !important;
-        box-shadow: 0 30px 70px rgba(0,0,0,0.55), inset 0 1px 0 rgba(255,255,255,0.07);
+        box-shadow: 0 30px 70px rgba(4, 10, 34, 0.55), inset 0 1px 0 rgba(255,255,255,0.09);
         backdrop-filter: blur(16px);
     }}
     /* Filo dorado superior, como el canto de un documento de valor */
@@ -842,9 +844,10 @@ def login_css():
 
     .istho-login-pie {{
         text-align: center; margin-top: 1.15rem;
-        color: rgba(226,236,255,0.40); font-size: 0.75rem; line-height: 1.7;
+        color: rgba(226,236,255,0.62); font-size: 0.75rem; line-height: 1.7;
+        text-shadow: 0 1px 3px rgba(4,10,34,0.5);
     }}
-    .istho-login-pie b {{ color: rgba(212,175,55,0.85); font-weight: 700; }}
+    .istho-login-pie b {{ color: {ORO_CLARO}; font-weight: 700; }}
     </style>
     """, unsafe_allow_html=True)
 
