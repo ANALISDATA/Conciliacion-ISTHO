@@ -4,6 +4,7 @@ from datetime import datetime
 
 import streamlit as st
 
+import db
 from conciliacion import (construir_vistas, crear_cruce_manual, eliminar_cruces, load_extracto,
                            load_libro_auxiliar, reconciliar, resumen_cruces)
 from config import CLAVE_ACCESO
@@ -121,6 +122,22 @@ if "estado" not in st.session_state:
 if "gen" not in st.session_state:
     st.session_state["gen"] = 0          # fuerza reiniciar la selección de las tablas
 
+# Si hay una conciliación guardada en Supabase (de una sesión anterior, un reinicio del
+# servidor, etc.) se ofrece retomarla en vez de tener que resubir los archivos y perder
+# el trabajo ya hecho, incluidas las conciliaciones manuales.
+if st.session_state["estado"] is None and db.disponible():
+    periodos = db.listar_periodos()
+    if periodos:
+        st.sidebar.divider()
+        st.sidebar.caption("☁️ Hay conciliaciones guardadas")
+        elegido = st.sidebar.selectbox(
+            "Retomar conciliación guardada", [p["periodo"] for p in periodos],
+            index=None, placeholder="Elige un período…", key="periodo_a_retomar",
+        )
+        if elegido and st.sidebar.button("↻ Retomar", use_container_width=True):
+            st.session_state["estado"] = db.cargar_estado(elegido)
+            st.rerun()
+
 if ejecutar:
     if not archivo_banco or not archivo_libro:
         st.sidebar.error("Debes cargar los dos archivos.")
@@ -146,10 +163,12 @@ if ejecutar:
                 agrupar_por_fecha=agrupar, max_grupo=max_grupo,
                 buscar_posibles=buscar_posibles, margen_valor=margen_valor,
             )
+            periodo = periodo_desde_fechas(list(df_banco["fecha"]) + list(df_libro["fecha"]))
             st.session_state["estado"] = {
                 "banco": df_banco, "libro": df_libro, "cruces": cruces, "posibles": posibles,
-                "margen_valor": margen_valor, "tolerancia": tolerancia,
+                "margen_valor": margen_valor, "tolerancia": tolerancia, "periodo": periodo,
             }
+            db.guardar_estado(periodo, st.session_state["estado"])
             st.session_state["gen"] += 1
         except Exception as e:
             st.sidebar.error(f"Error procesando los archivos: {e}")
@@ -378,6 +397,7 @@ elif vista == HOJAS[1]:
                 if st.button("↩️  Desconciliar", type="primary", disabled=not confirmar,
                              key="btn_desconciliar"):
                     st.session_state["estado"]["cruces"] = eliminar_cruces(cruces, elegidos)
+                    db.guardar_estado(st.session_state["estado"]["periodo"], st.session_state["estado"])
                     st.session_state["gen"] += 1
                     st.session_state["aviso"] = f"Se deshicieron {len(elegidos)} conciliación(es)."
                     st.rerun()
@@ -525,6 +545,7 @@ else:
                      use_container_width=True, key="btn_cruzar"):
             nuevos, nuevo_id = crear_cruce_manual(cruces, ids_banco, ids_libro)
             st.session_state["estado"]["cruces"] = nuevos
+            db.guardar_estado(st.session_state["estado"]["periodo"], st.session_state["estado"])
             st.session_state["gen"] += 1
             st.session_state["aviso"] = (
                 f"Conciliación **{nuevo_id}** creada: {len(ids_banco)} movimiento(s) del banco "
