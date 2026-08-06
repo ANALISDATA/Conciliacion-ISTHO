@@ -21,6 +21,12 @@ _STOPWORDS = {
     # usa como beneficiario en retiros, traslados y movimientos propios. Tratarlo como nombre
     # bloqueaba cruces exactos (ej. "RETIRO CAJERO ..." contra un asiento a nombre de ISTHO).
     "ISTHO",
+    # El canal de la transferencia tampoco identifica a la contraparte. Sin esto, "PAGO
+    # INTERBANC <empresa>" no cruzaba contra "<empresa> INDUSTRIAL S.A." aunque el valor
+    # fuera exacto y la fecha estuviera a solo unos días: "INTERBANC" quedaba en el conjunto
+    # de palabras del banco sin nada equivalente del lado contable, y eso basta para que
+    # `_mismo_nombre` rechace el cruce por completo (exige que TODAS las palabras casen).
+    "INTERBANC", "INTERBANCARIO", "INTERBANCARIA",
 }
 
 # Longitud a partir de la cual se asume que el extracto cortó la descripción a mitad de
