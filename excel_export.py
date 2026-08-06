@@ -107,7 +107,13 @@ def _escribir_tabla(worksheet, fmts, start_row, columnas, df):
                 worksheet.write_number(r, c, int(valor) if pd.notna(valor) else 0,
                                         fmts["celda_gris" if gris else "celda"])
             else:
-                worksheet.write(r, c, "" if pd.isna(valor) else str(valor), fmts["celda_gris" if gris else "celda"])
+                # write_string() a propósito, no write(): las descripciones vienen del
+                # extracto y del libro auxiliar (texto externo, no escrito por la app) y
+                # write() genérico interpreta como fórmula cualquier valor que empiece con
+                # "=" — un beneficiario o detalle contable que por casualidad empezara así
+                # se ejecutaría como fórmula al abrir el Excel en vez de mostrarse como texto.
+                worksheet.write_string(r, c, "" if pd.isna(valor) else str(valor),
+                                        fmts["celda_gris" if gris else "celda"])
         r += 1
 
     if r > start_row + 1:

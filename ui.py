@@ -195,6 +195,13 @@ def inject_css():
         background: {AZUL_CLARO}; color: #fff;
     }}
 
+    /* Selector "Retomar conciliación guardada": cada opción incluye la fecha y hora del
+       último guardado (para distinguir versiones si dos personas trabajaron el mismo mes)
+       y con la letra normal del sidebar el texto no cabía y se cortaba. */
+    div[class*="st-key-periodo_a_retomar"] [data-baseweb="select"] * {{
+        font-size: 0.72rem !important;
+    }}
+
     /* ==================== BARRA DE NAVEGACIÓN SUPERIOR ==================== */
     /* El contenedor de Streamlit es un flex en COLUMNA, así que lo que centra
        horizontalmente es align-items (justify-content solo movería en vertical). */

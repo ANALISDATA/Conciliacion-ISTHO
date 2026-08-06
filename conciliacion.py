@@ -822,14 +822,21 @@ def construir_vistas(df_banco, df_libro, cruces, posibles):
 
 
 def resumen_cruces(df_banco, df_libro, cruces):
-    """Una fila por conciliación, para la pantalla donde se deshacen."""
+    """Una fila por conciliación, para la pantalla donde se deshacen. Incluye las
+    descripciones de ambos lados porque el cruce se valida principalmente por el nombre
+    del beneficiario, y sin verlo aquí no hay forma de confirmar que la conciliación
+    seleccionada es la correcta antes de deshacerla."""
     filas = []
     for c in cruces:
         v_banco = sum(float(df_banco.loc[i, "valor"]) for i in c["banco_ids"])
         v_libro = sum(float(df_libro.loc[i, "valor"]) for i in c["libro_ids"])
+        desc_banco = "; ".join(str(df_banco.loc[i, "descripcion"]) for i in c["banco_ids"])
+        desc_libro = "; ".join(str(df_libro.loc[i, "descripcion"]) for i in c["libro_ids"])
         filas.append({
             "ID": c["id"],
             "Origen": c["origen"],
+            "Descripción Banco": desc_banco,
+            "Descripción Contabilidad": desc_libro,
             "Mov. banco": len(c["banco_ids"]),
             "Mov. contabilidad": len(c["libro_ids"]),
             "Valor banco": v_banco,

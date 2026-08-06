@@ -22,6 +22,17 @@ st.set_page_config(page_title="Conciliación Bancaria", layout="wide",
 inject_css()
 
 
+def _fmt_dt(iso):
+    """Convierte un timestamp ISO (como los que guarda Supabase) a dd/mm/aaaa hh:mm.
+    Devuelve vacío si no hay valor o no se puede interpretar, en vez de lanzar."""
+    if not iso:
+        return ""
+    try:
+        return datetime.fromisoformat(str(iso)).strftime("%d/%m/%Y %H:%M")
+    except ValueError:
+        return ""
+
+
 # ------------------------------------------------------------------ Acceso --
 def acceso_permitido():
     """Puerta de entrada. La app queda publicada en una dirección pública, así que sin la
@@ -54,6 +65,32 @@ def acceso_permitido():
 
 if not acceso_permitido():
     st.stop()
+
+# Si algún mes anterior quedó marcado como "terminado", sus dos saldos finales (banco y
+# contabilidad, que no siempre son iguales si el mes no cerró perfecto) se sugieren como
+# saldos iniciales del mes nuevo. Se hace una sola vez por sesión: en cuanto los widgets de
+# abajo se dibujan, session_state ya tiene su propio valor y esto deja de aplicar.
+if "saldo_inicial_banco" not in st.session_state and db.disponible():
+    ultimo = db.ultimo_cierre()
+    if ultimo:
+        if ultimo.get("saldo_final_banco") is not None:
+            st.session_state["saldo_inicial_banco"] = ultimo["saldo_final_banco"]
+        if ultimo.get("saldo_final_libro") is not None:
+            st.session_state["saldo_inicial_libro"] = ultimo["saldo_final_libro"]
+
+# Streamlit no deja cambiar el valor guardado de un widget (ej. "saldo_inicial_banco")
+# después de que ese widget ya se dibujó en la misma corrida del script. El botón
+# "↻ Retomar" vive más abajo, después de que el campo de saldo inicial ya se dibujó, así
+# que no puede tocar session_state directamente: deja la conciliación cargada "pendiente"
+# aquí, ANTES de que se dibuje ningún widget, que es el único momento en que se puede.
+if "_retomar_pendiente" in st.session_state:
+    cargado = st.session_state.pop("_retomar_pendiente")
+    st.session_state["estado"] = cargado
+    if cargado:
+        if cargado.get("saldo_inicial_banco") is not None:
+            st.session_state["saldo_inicial_banco"] = cargado["saldo_inicial_banco"]
+        if cargado.get("saldo_inicial_libro") is not None:
+            st.session_state["saldo_inicial_libro"] = cargado["saldo_inicial_libro"]
 
 # ---------------------------------------------------------------- Sidebar --
 sidebar_brand()
@@ -105,12 +142,22 @@ margen_valor = st.sidebar.number_input(
 )
 
 sidebar_step(3, "Saldo inicial")
-st.sidebar.caption("Saldo final del mes anterior, tal como aparece en el extracto "
-                   "(«SALDO ANTERIOR»). Es el punto de partida del saldo final.")
-saldo_inicial = st.sidebar.number_input(
-    "Saldo inicial ($)", value=0.0, step=1_000_000.0, format="%.2f", key="saldo_inicial",
-    help="Se toma del extracto bancario del mes anterior. Con este valor la app calcula "
-         "Saldo final = Saldo inicial + Total ingresos − Total salidas."
+st.sidebar.caption("Saldo final del mes anterior de cada lado. Si el mes pasado quedó "
+                   "totalmente conciliado deberían ser iguales; si no, cada uno trae su "
+                   "propio arrastre.")
+saldo_inicial_banco = st.sidebar.number_input(
+    # Sin `value=`: el valor inicial lo pone session_state (arranca en 0 si no hay nada
+    # guardado). Pasar `value` a la vez que el bloque de arriba ya fijó session_state hace
+    # que Streamlit avise (sin romper nada) de que sobra uno de los dos.
+    "Saldo inicial banco ($)", step=1_000_000.0, format="%.2f", key="saldo_inicial_banco",
+    help="Se toma del extracto bancario del mes anterior («SALDO ANTERIOR»). Con este valor "
+         "la app calcula Saldo final banco = Saldo inicial + Total ingresos − Total salidas."
+)
+saldo_inicial_libro = st.sidebar.number_input(
+    "Saldo inicial contabilidad ($)", step=1_000_000.0, format="%.2f",
+    key="saldo_inicial_libro",
+    help="Saldo con el que el libro auxiliar traía la cuenta al empezar el mes. Se usa igual "
+         "que el de arriba, pero del lado contable, para poder comparar los dos saldos finales."
 )
 
 ejecutar = st.sidebar.button("Conciliar", type="primary", use_container_width=True)
@@ -130,12 +177,23 @@ if st.session_state["estado"] is None and db.disponible():
     if periodos:
         st.sidebar.divider()
         st.sidebar.caption("☁️ Hay conciliaciones guardadas")
-        elegido = st.sidebar.selectbox(
-            "Retomar conciliación guardada", [p["periodo"] for p in periodos],
+        # Se muestra la hora del último guardado junto a cada período: si dos personas
+        # trabajaron el mismo mes, así se puede distinguir cuál versión es la más reciente
+        # antes de decidir cuál retomar (dos guardados del mismo período se pisan entre sí,
+        # gana el último — esto solo ayuda a saber cuál fue).
+        opciones = {f"{p['periodo']} — actualizado {_fmt_dt(p['actualizado_en'])}": p["periodo"]
+                    for p in periodos}
+        etiqueta = st.sidebar.selectbox(
+            "Retomar conciliación guardada", list(opciones.keys()),
             index=None, placeholder="Elige un período…", key="periodo_a_retomar",
         )
+        elegido = opciones.get(etiqueta)
         if elegido and st.sidebar.button("↻ Retomar", use_container_width=True):
-            st.session_state["estado"] = db.cargar_estado(elegido)
+            # No se toca session_state["estado"] ni el saldo inicial aquí: el campo de saldo
+            # inicial ya se dibujó más arriba en esta misma corrida, y Streamlit no deja
+            # cambiar el valor de un widget después de dibujado. Se deja pendiente y el
+            # bloque de arriba lo aplica en la siguiente corrida, antes de dibujar nada.
+            st.session_state["_retomar_pendiente"] = db.cargar_estado(elegido)
             st.rerun()
 
 if ejecutar:
@@ -167,6 +225,8 @@ if ejecutar:
             st.session_state["estado"] = {
                 "banco": df_banco, "libro": df_libro, "cruces": cruces, "posibles": posibles,
                 "margen_valor": margen_valor, "tolerancia": tolerancia, "periodo": periodo,
+                "saldo_inicial_banco": saldo_inicial_banco, "saldo_inicial_libro": saldo_inicial_libro,
+                "cerrado": False, "saldo_final_banco": None, "saldo_final_libro": None, "cerrado_en": None,
             }
             db.guardar_estado(periodo, st.session_state["estado"])
             st.session_state["gen"] += 1
@@ -233,11 +293,24 @@ pct = (n_conciliados / len(df_banco) * 100) if len(df_banco) else 0
 # Ingresos y salidas se determinan solo por el SIGNO del movimiento, sin mirar el concepto.
 total_ingresos = float(df_banco.loc[df_banco["valor"] > 0, "valor"].sum())
 total_salidas = float(-df_banco.loc[df_banco["valor"] < 0, "valor"].sum())
-saldo_final = saldo_inicial + total_ingresos - total_salidas
+saldo_final = saldo_inicial_banco + total_ingresos - total_salidas
 
+# Mismo cálculo con el lado contable, pero con su PROPIO saldo inicial: si el mes anterior no
+# quedó perfectamente conciliado, el arrastre del banco y el de la contabilidad no tienen por
+# qué coincidir, y forzarlos a ser iguales escondería esa diferencia en vez de mostrarla.
+total_ingresos_libro = float(df_libro.loc[df_libro["valor"] > 0, "valor"].sum())
+total_salidas_libro = float(-df_libro.loc[df_libro["valor"] < 0, "valor"].sum())
+saldo_final_libro = saldo_inicial_libro + total_ingresos_libro - total_salidas_libro
+
+# "diferencia" es solo del período (banco - contabilidad de este mes, sin arrastre) y se usa
+# para validar que lo pendiente explica todo lo que no cruzó. "diferencia_saldos" es la cifra
+# de fondo: cuánto se distancian los dos saldos finales, arrastre incluido.
 total_dif_posibles = df_posibles["Diferencia"].sum() if not df_posibles.empty else 0.0
 dif_esperada = (total_solo_banco - total_solo_libro) + total_dif_posibles
 cuadra = abs(diferencia - dif_esperada) <= 0.01
+
+diferencia_saldos = saldo_final - saldo_final_libro
+saldos_cuadran = abs(diferencia_saldos) <= 0.01
 
 # ------------------------------------------------------------------ Meta --
 periodo = periodo_desde_fechas(list(df_banco["fecha"]) + list(df_libro["fecha"]))
@@ -251,12 +324,22 @@ sufijo = periodo.replace(" ", "_").replace("/", "-")
 
 
 # --------------------------------------------------------------- Helpers --
-def filtrar(df, key, columna_fecha, columnas_texto, columna_tipo=None):
-    """Barra de filtros (texto + rango de fechas + tipo) reutilizable."""
+def filtrar(df, key, columna_fecha, columnas_texto, columna_tipo=None, permitir_orden=False,
+            columna_orden_alt=None):
+    """Barra de filtros (texto + rango de fechas + tipo, y opcionalmente orden) reutilizable.
+
+    Cada widget usa una key fija por hoja (no depende de `gen` ni de cuál hoja está activa),
+    así que lo que busques, el rango de fechas y el orden elegido se mantienen aunque cambies
+    de pestaña o hagas otra acción — hasta que tú mismo los borres.
+
+    `permitir_orden` agrega un selector Fecha / Descripción (A-Z): ordenar por nombre ayuda a
+    emparejar a simple vista los pendientes del banco contra los de contabilidad."""
     if df.empty:
         return df
+    orden_col = (columna_orden_alt or (columnas_texto[0] if columnas_texto else None)) if permitir_orden else None
     with st.container(border=True, key=f"toolbar_{key}"):
-        col1, col2, col3 = st.columns([2.5, 1.7, 1])
+        cols = st.columns([2.2, 1.6, 1, 1.3]) if orden_col else st.columns([2.5, 1.7, 1])
+        col1, col2, col3 = cols[0], cols[1], cols[2]
         texto = col1.text_input("Buscar", placeholder="Nombre, descripción, comprobante...",
                                  key=f"buscar_{key}")
         resultado = df
@@ -272,6 +355,9 @@ def filtrar(df, key, columna_fecha, columnas_texto, columna_tipo=None):
             sel = col3.selectbox("Tipo", opciones, key=f"tipo_{key}")
             if sel != "Todos":
                 resultado = resultado[resultado[columna_tipo] == sel]
+        orden = "Fecha"
+        if orden_col:
+            orden = cols[3].selectbox("Ordenar por", ["Fecha", "Descripción (A-Z)"], key=f"orden_{key}")
         if texto:
             mascara = None
             for c in columnas_texto:
@@ -280,6 +366,10 @@ def filtrar(df, key, columna_fecha, columnas_texto, columna_tipo=None):
                     mascara = coincide if mascara is None else (mascara | coincide)
             if mascara is not None:
                 resultado = resultado[mascara]
+    if orden_col and orden == "Descripción (A-Z)" and orden_col in resultado.columns:
+        resultado = resultado.sort_values(orden_col, key=lambda s: s.astype(str).str.upper())
+    else:
+        resultado = resultado.sort_values(columna_fecha)
     return resultado
 
 
@@ -308,11 +398,11 @@ if vista == HOJAS[0]:
         st.info("El logo de ISTHO aún no está cargado. Guarda el archivo del logo como "
                 "**logo_istho.png** dentro de la carpeta APP_CONCILIACION.")
 
-    section("Saldos del periodo",
+    section("Saldos según el banco",
             "Saldo final = Saldo inicial + Total ingresos − Total salidas"
-            + ("" if saldo_inicial else " · escribe el saldo inicial en el panel izquierdo"))
+            + ("" if saldo_inicial_banco else " · escribe el saldo inicial en el panel izquierdo"))
     stat_cards([
-        {"label": "Saldo inicial", "value": f"{saldo_inicial:,.2f}", "icon": "🗓️", "accent": GRIS,
+        {"label": "Saldo inicial", "value": f"{saldo_inicial_banco:,.2f}", "icon": "🗓️", "accent": GRIS,
          "sub": "saldo final del mes anterior",
          "tip": "Saldo con el que cerró el mes anterior («SALDO ANTERIOR» en el extracto). "
                 "Se escribe en el panel izquierdo y es el punto de partida del cálculo."},
@@ -328,6 +418,63 @@ if vista == HOJAS[0]:
          "tip": "Saldo inicial + Total ingresos − Total salidas. Debe coincidir con el "
                 "«SALDO ACTUAL» que reporta el extracto bancario."},
     ])
+
+    section("Saldos según el libro auxiliar",
+            "Su propio saldo inicial (no necesariamente igual al del banco) con los ingresos "
+            "y salidas de la contabilidad")
+    stat_cards([
+        {"label": "Saldo inicial", "value": f"{saldo_inicial_libro:,.2f}", "icon": "🗓️", "accent": GRIS,
+         "sub": "arrastre de la contabilidad",
+         "tip": "Saldo con el que el libro auxiliar traía la cuenta al empezar el mes. Se escribe "
+                "en el panel izquierdo, por separado del saldo inicial del banco."},
+        {"label": "Total ingresos", "value": f"{total_ingresos_libro:,.2f}", "icon": "📈", "accent": VERDE,
+         "sub": f"{int((df_libro['valor'] > 0).sum()):,} registro(s)",
+         "tip": "Suma de los débitos del libro auxiliar (entran al banco)."},
+        {"label": "Total salidas", "value": f"{total_salidas_libro:,.2f}", "icon": "📉", "accent": ROJO,
+         "sub": f"{int((df_libro['valor'] < 0).sum()):,} registro(s)",
+         "tip": "Suma de los créditos del libro auxiliar (salen del banco)."},
+        {"label": "Saldo final", "value": f"{saldo_final_libro:,.2f}", "icon": "💠", "accent": VERDE_OSC,
+         "sub": "según la contabilidad",
+         "tip": "Saldo inicial + Total ingresos − Total salidas, esta vez con los valores del "
+                "libro auxiliar en vez de los del extracto."},
+    ])
+
+    section("Comparación banco vs. contabilidad",
+            "Incluye el arrastre de saldos iniciales, no solo los movimientos de este mes")
+    stat_cards([
+        {"label": "Saldo final banco", "value": f"{saldo_final:,.2f}", "icon": "🏦", "accent": VERDE_OSC},
+        {"label": "Saldo final contabilidad", "value": f"{saldo_final_libro:,.2f}", "icon": "📘",
+         "accent": VERDE_OSC},
+        {"label": "Diferencia", "value": f"{diferencia_saldos:,.2f}",
+         "icon": ("✔️" if saldos_cuadran else "⚠️"), "accent": (VERDE if saldos_cuadran else ROJO),
+         "sub": ("Los dos saldos finales coinciden" if saldos_cuadran
+                 else "No coinciden — revisa los saldos iniciales o lo pendiente")},
+    ])
+
+    if est.get("cerrado"):
+        cerrado_en_fmt = _fmt_dt(est.get("cerrado_en"))
+        st.success(
+            f"🔒 Esta conciliación quedó marcada como **terminada**"
+            f"{f' el {cerrado_en_fmt}' if cerrado_en_fmt else ''} "
+            f"— el saldo final del banco (${(est.get('saldo_final_banco') or 0):,.2f}) va a sugerirse como saldo "
+            "inicial del próximo mes."
+        )
+        if st.button("↺ Reabrir (seguir editando este mes)"):
+            st.session_state["estado"]["cerrado"] = False
+            db.guardar_cambios(est["periodo"], st.session_state["estado"])
+            st.rerun()
+    else:
+        st.info("Cuando termines de revisar todo lo pendiente de este mes, márcalo como terminado: "
+                 "el saldo final queda guardado para sugerir el saldo inicial del mes siguiente, sin "
+                 "que tengas que volver a escribirlo.")
+        if st.button("🔒 Marcar esta conciliación como terminada", type="primary"):
+            st.session_state["estado"]["cerrado"] = True
+            st.session_state["estado"]["saldo_final_banco"] = saldo_final
+            st.session_state["estado"]["saldo_final_libro"] = saldo_final_libro
+            st.session_state["estado"]["cerrado_en"] = datetime.now().isoformat()
+            db.guardar_cambios(est["periodo"], st.session_state["estado"])
+            st.session_state["aviso"] = "Conciliación marcada como terminada."
+            st.rerun()
 
     section("Resumen del cruce", f"{pct:.0f}% de los movimientos del banco quedaron conciliados"
                                  + (f" · {n_manuales} conciliación(es) manual(es)" if n_manuales else ""))
@@ -381,6 +528,8 @@ elif vista == HOJAS[1]:
                 on_select="rerun", selection_mode="multi-row",
                 key=f"sel_desconciliar_{st.session_state['gen']}",
                 column_config={
+                    "Descripción Banco": st.column_config.TextColumn(width=220),
+                    "Descripción Contabilidad": st.column_config.TextColumn(width=420),
                     "Valor banco": st.column_config.NumberColumn(format="accounting"),
                     "Valor contabilidad": st.column_config.NumberColumn(format="accounting"),
                 },
@@ -397,7 +546,7 @@ elif vista == HOJAS[1]:
                 if st.button("↩️  Desconciliar", type="primary", disabled=not confirmar,
                              key="btn_desconciliar"):
                     st.session_state["estado"]["cruces"] = eliminar_cruces(cruces, elegidos)
-                    db.guardar_estado(st.session_state["estado"]["periodo"], st.session_state["estado"])
+                    db.guardar_cambios(st.session_state["estado"]["periodo"], st.session_state["estado"])
                     st.session_state["gen"] += 1
                     st.session_state["aviso"] = f"Se deshicieron {len(elegidos)} conciliación(es)."
                     st.rerun()
@@ -436,7 +585,7 @@ elif vista == HOJAS[3]:
         mostrar = df_solo_banco[["fecha", "valor", "tipo", "descripcion"]].rename(columns={
             "fecha": "Fecha", "valor": "Valor", "tipo": "Tipo", "descripcion": "Descripción"})
         filtrado = filtrar(mostrar, "solo_banco", "Fecha", ["Descripción"],
-                            columna_tipo="Tipo").sort_values("Fecha")
+                            columna_tipo="Tipo", permitir_orden=True)
         barra_resultado(filtrado, mostrar, "CONCILIACIÓN BANCARIA — PENDIENTES DEL EXTRACTO",
                         "CONCILIACION BANCARIA - PENDIENTES EXTRACTO", "solo_banco")
         tabla(filtrado, height=900)
@@ -454,7 +603,7 @@ elif vista == HOJAS[4]:
             columns={"fecha": "Fecha", "valor": "Valor", "tipo": "Tipo", "descripcion": "Descripción",
                      "comprobante": "Comprobante", "documento": "Documento"})
         filtrado = filtrar(mostrar, "solo_libro", "Fecha", ["Descripción", "Comprobante", "Documento"],
-                            columna_tipo="Tipo").sort_values("Fecha")
+                            columna_tipo="Tipo", permitir_orden=True)
         barra_resultado(filtrado, mostrar, "CONCILIACIÓN BANCARIA — PENDIENTES DEL LIBRO AUXILIAR",
                         "CONCILIACION BANCARIA - PENDIENTES LIBRO AUXILIAR", "solo_libro")
         tabla(filtrado, height=900)
@@ -477,11 +626,12 @@ else:
         if df.empty:
             st.success("No quedan movimientos pendientes de este lado.")
             return [], 0.0
-        filtrado = filtrar(df, f"man_{key}", "fecha", columnas_texto, columna_tipo="tipo")
+        filtrado = filtrar(df, f"man_{key}", "fecha", columnas_texto, columna_tipo="tipo",
+                            permitir_orden=True, columna_orden_alt="descripcion")
         if filtrado.empty:
             st.info("Ningún movimiento coincide con el filtro.")
             return [], 0.0
-        filtrado = filtrado.sort_values("fecha").reset_index(drop=True)
+        filtrado = filtrado.reset_index(drop=True)
         mostrar = filtrado[columnas].rename(columns={
             "fecha": "Fecha", "valor": "Valor", "tipo": "Tipo", "descripcion": "Descripción",
             "comprobante": "Comprobante", "documento": "Documento"})
@@ -545,7 +695,7 @@ else:
                      use_container_width=True, key="btn_cruzar"):
             nuevos, nuevo_id = crear_cruce_manual(cruces, ids_banco, ids_libro)
             st.session_state["estado"]["cruces"] = nuevos
-            db.guardar_estado(st.session_state["estado"]["periodo"], st.session_state["estado"])
+            db.guardar_cambios(st.session_state["estado"]["periodo"], st.session_state["estado"])
             st.session_state["gen"] += 1
             st.session_state["aviso"] = (
                 f"Conciliación **{nuevo_id}** creada: {len(ids_banco)} movimiento(s) del banco "
