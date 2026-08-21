@@ -363,6 +363,11 @@ def filtrar(df, key, columna_fecha, columnas_texto, columna_tipo=None, permitir_
     así que lo que busques, el rango de fechas y el orden elegido se mantienen aunque cambies
     de pestaña o hagas otra acción — hasta que tú mismo los borres.
 
+    Las hojas que muestran el MISMO conjunto de pendientes desde ángulos distintos comparten
+    key a propósito (`"solo_banco"`/`"solo_libro"`, usadas tanto en Pend. extracto/Pend. libro
+    auxiliar como en los dos paneles de Cruce manual): filtrar en una se refleja en la otra,
+    para no repetir la búsqueda al pasar de revisar un pendiente a cruzarlo a mano.
+
     `permitir_orden` agrega un selector Fecha / Descripción (A-Z): ordenar por nombre ayuda a
     emparejar a simple vista los pendientes del banco contra los de contabilidad."""
     if df.empty:
@@ -657,7 +662,11 @@ else:
         if df.empty:
             st.success("No quedan movimientos pendientes de este lado.")
             return [], 0.0
-        filtrado = filtrar(df, f"man_{key}", "fecha", columnas_texto, columna_tipo="tipo",
+        # Misma key que "Pend. extracto"/"Pend. libro auxiliar" (f"solo_{key}"), a propósito:
+        # es el mismo conjunto de pendientes visto desde otra hoja, así que si ya filtraste
+        # allá para ubicar un movimiento, lo encuentras filtrado igual aquí, sin repetir la
+        # búsqueda.
+        filtrado = filtrar(df, f"solo_{key}", "fecha", columnas_texto, columna_tipo="tipo",
                             permitir_orden=True, columna_orden_alt="descripcion")
         if filtrado.empty:
             st.info("Ningún movimiento coincide con el filtro.")

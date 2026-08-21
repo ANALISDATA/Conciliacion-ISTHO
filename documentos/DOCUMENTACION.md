@@ -262,6 +262,11 @@ Franja azul con el título, y debajo la barra de navegación centrada (`st.segme
 Los dos tipos de pendiente tienen **hoja propia** (antes compartían una con sub-pestañas):
 son las dos listas que más se trabajan a mano y cada una necesita la pantalla completa.
 
+**El filtro de Pend. extracto/Pend. libro auxiliar y el de su panel correspondiente en Cruce
+manual son el mismo** (comparten `key` en `filtrar()`, ver `app.py`): filtras un pendiente en
+una hoja para identificarlo y, al pasar a Cruce manual a cruzarlo a mano, ya aparece filtrado
+ahí también, sin repetir la búsqueda.
+
 En las hojas de tablas el encabezado usa su versión **compacta** (una línea) para que los
 registros arranquen lo más arriba posible.
 
