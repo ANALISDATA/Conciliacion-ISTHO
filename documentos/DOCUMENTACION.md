@@ -130,8 +130,10 @@ equivocada.
 | 3 | `_agrupar_por_fecha` | Varios movimientos de un lado que **suman** el valor de uno del otro, acotando candidatos por nombre. Ej: un anticipo y su «pago sobre anticipo» = 1 solo giro bancario. |
 | 3b | `_agrupar_por_concepto` | Cuando el banco **itemiza** y la contabilidad **consolida**. Reconoce el concepto (Nómina, Seguridad social, 4x1000, IVA, Intereses, Retenciones, Comisiones) y suma todos los del mismo tipo. |
 | 3c | `_agrupar_lotes_por_dia` | **Lotes de días completos.** El concepto se lee del lado del banco (que sí lo describe) y del contable solo se exige que el valor calce y la fecha esté cerca. |
-| 4 | `_cruces_solo_valor` | **Segunda ronda.** Sobre lo que sigue pendiente después de todas las pasadas anteriores, cruza 1 a 1 por **valor exacto al centavo**, sin exigir el nombre — la fecha más cercana desempata. Motivo queda marcado **Baja**. |
-| 5 | `_cruces_posibles_por_margen` | Coinciden en fecha y nombre pero el valor difiere hasta `margen_valor` ($100.000). **No se dan por conciliados**: quedan aparte para revisión manual. |
+| 4 | `_cruces_posibles_por_margen` | Coinciden en fecha y nombre pero el valor difiere hasta `margen_valor` ($100.000). **No se dan por conciliados**: quedan aparte para revisión manual. |
+
+Aparte de estas 4 (todas dentro de `reconciliar()`, disparadas por el botón **Conciliar**), existe
+una pasada más que **no** corre automáticamente — ver la sección siguiente.
 
 **Ejemplos reales que resuelven las pasadas de agrupación:**
 
@@ -142,24 +144,36 @@ equivocada.
   solo cruce. La descripción contable no dice «nómina» por ningún lado, por eso esta pasada
   lee el concepto del banco.
 
-### Segunda ronda: cruzar lo pendiente solo por valor
+### Segunda ronda: cruzar lo pendiente solo por valor (acción aparte)
 
-Después de las pasadas 1-3c (todas exigen que el nombre valide), muchos movimientos quedaban
-pendientes con **el mismo valor en los dos lados** y lo único que fallaba era el nombre: el
-extracto viene cortado a 28 caracteres, describe el canal (`"TRANSFERENCIA CTA SUC VIRTUAL"`)
-en vez de la contraparte, o la contabilidad registró el asiento a nombre de otro tercero.
-Medido en Junio 2026: **75 cruces adicionales**, pendientes de banco 615→540 y de
-contabilidad 151→76 (en Mayo 2026: 76 cruces, 443→367 y 156→80).
+Después de las pasadas 1-4 (todas exigen que el nombre valide, salvo la de margen que también
+lo exige), muchos movimientos quedaban pendientes con **el mismo valor en los dos lados** y lo
+único que fallaba era el nombre: el extracto viene cortado a 28 caracteres, describe el canal
+(`"TRANSFERENCIA CTA SUC VIRTUAL"`) en vez de la contraparte, o la contabilidad registró el
+asiento a nombre de otro tercero. Medido en Junio 2026: **75 cruces adicionales**, pendientes
+de banco 615→540 y de contabilidad 151→76 (en Mayo 2026: 76 cruces, 443→367 y 156→80).
 
-`_cruces_solo_valor()` corre al final, sobre las sobras, con reglas más laxas a propósito:
+**No corre dentro de `reconciliar()` ni con el botón Conciliar, a propósito.** Es
+`aplicar_segunda_ronda(df_banco, df_libro, cruces, posibles)`, una función y un botón aparte
+(«🔁 Cruzar pendientes por valor», debajo de Conciliar en el sidebar) para que quien concilia
+pueda **revisar lo que quedó pendiente antes** de decidir si vale la pena aplicar un criterio
+menos estricto — no es automático porque no es igual de confiable que el resto.
+
+- Se habilita solo cuando ya hay una conciliación cargada (recién hecha o retomada).
+- No repite las pasadas de `reconciliar()` ni toca los cruces existentes: calcula qué sigue
+  pendiente (lo que ningún cruce ni ningún «posible» está usando) y le corre
+  `_cruces_solo_valor()` encima, agregando sus resultados a la lista de cruces.
 - **Valor exacto al centavo y mismo signo**, nunca con margen ni sumando varios movimientos.
-- Recorre por distancia de fecha creciente (primero la misma fecha, luego 1 día, etc.);
-  cuando hay más de un candidato con el mismo valor, gana el de fecha más cercana.
-- Controlada por `segunda_ronda` (activada por defecto) y `tolerancia_dias_valor` (30 días
-  por defecto) en el sidebar.
+- **Sin ningún límite de fecha**: no importa si un lado quedó registrado un mes distinto al
+  del otro, si el valor calza, cruza. La fecha solo interviene para decidir el orden cuando
+  hay más de un candidato con el mismo valor — se arman todos los pares posibles y se
+  resuelven de fechas más parecidas a más lejanas, para que un par casi exacto en fecha nunca
+  pierda su candidato ideal frente a uno que se resolvió antes por el orden de recorrido.
 - Sus cruces quedan con motivo **«Baja (solo valor exacto, sin validar nombre...)»**, para
   distinguirlos a simple vista en la hoja Conciliados y poder deshacerlos si al revisar
   resultan ser coincidencia y no el mismo movimiento.
+- Es **idempotente**: darle clic dos veces no duplica nada, porque la segunda vez ya no
+  encuentra pendientes nuevos que cruzar.
 
 **Es una decisión de diseño deliberada, no un descuido**: el caso que la sección anterior
 documenta como "no debe cruzar" —`"Jorge Luis Garc"` contra `"CAMELO BELTRAN JHON

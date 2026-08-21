@@ -17,10 +17,11 @@ encontradas. **Consultarlo antes de modificar el motor o la interfaz.**
   originales.
 - Tras cualquier cambio en el motor, correr la prueba de integridad: sin movimientos
   duplicados, cobertura completa y **el cuadre de Junio 2026 debe seguir dando 4.016.309,19**
-  (Mayo 2026: 12.132.851,78) — con y sin la segunda ronda activada.
-- `reconciliar()` corre una **segunda ronda** (`_cruces_solo_valor`, controlada por
-  `segunda_ronda`/`tolerancia_dias_valor`) sobre lo que queda pendiente: valor exacto y
-  fecha, sin exigir nombre, marcada «Baja». Es a propósito menos estricta — ver documentación.
+  (Mayo 2026: 12.132.851,78) — antes y después de aplicar la segunda ronda.
+- `aplicar_segunda_ronda()` es una función y un botón **aparte** de `reconciliar()`/Conciliar
+  (a propósito, para poder revisar lo pendiente antes de aplicarla): cruza lo que queda
+  pendiente por valor exacto **sin ningún límite de fecha**, sin exigir nombre, marcada
+  «Baja». Ver documentación.
 - El extracto bancario **viene truncado a ~28 caracteres**; por eso la comparación de nombres
   exige subconjunto (no igualdad) y tolera prefijos.
 - Al probar: cerrar la consola y reabrir `Iniciar_App.bat`. Refrescar el navegador no recarga

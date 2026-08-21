@@ -591,10 +591,12 @@ def _cruces_posibles_por_margen(banco, libro, margen_valor=100000, tolerancia_di
     return posibles
 
 
-def _cruces_solo_valor(banco, libro, tolerancia_dias=30):
+def _cruces_solo_valor(banco, libro):
     """**Segunda ronda.** Sobre lo que quedó pendiente después de todas las pasadas que
-    validan el nombre, cruza 1 a 1 por **valor exacto**, usando la fecha solo para elegir
-    entre candidatos: el más cercano gana.
+    validan el nombre, cruza 1 a 1 por **valor exacto**, sin ningún límite de fecha — pueden
+    quedar en meses distintos y aun así cruzan. La fecha solo entra a decidir el orden cuando
+    hay más de un candidato con el mismo valor: gana siempre el par con las fechas más
+    parecidas entre sí, para no emparejar mal por casualidad del recorrido.
 
     Existe porque muchos movimientos quedaban pendientes con el valor idéntico en los dos
     lados y la única variable que fallaba era el nombre: el extracto viene truncado a ~28
@@ -604,8 +606,6 @@ def _cruces_solo_valor(banco, libro, tolerancia_dias=30):
     Al no validar el nombre es la pasada **menos segura** de todas, así que:
     - Corre de última, sobre las sobras: todo lo que sí se pudo verificar por nombre ya cruzó.
     - Exige el valor **exacto al centavo** y el mismo signo; no acepta márgenes ni sumas.
-    - Recorre por distancia de fecha creciente (primero todos los de la misma fecha, luego
-      los de 1 día, y así), para que un par con fecha exacta nunca pierda contra uno lejano.
     - Marca sus cruces con confianza **Baja**, para que se puedan revisar y deshacer.
     """
     matches = []
@@ -621,37 +621,40 @@ def _cruces_solo_valor(banco, libro, tolerancia_dias=30):
     if not libro_por_valor:
         return matches
 
-    for dias in range(0, tolerancia_dias + 1):
-        for bi in pendientes_banco:
-            if banco.at[bi, "matched"]:
-                continue
-            candidatos = libro_por_valor.get(_centavos(banco.at[bi, "valor"]), [])
-            fecha_b = banco.at[bi, "fecha"]
-            for li in candidatos:
-                if libro.at[li, "matched"]:
-                    continue
-                if abs((fecha_b - libro.at[li, "fecha"]).days) != dias:
-                    continue
-                banco.at[bi, "matched"] = True
-                libro.at[li, "matched"] = True
-                detalle = "misma fecha" if dias == 0 else f"{dias} día(s) de diferencia"
-                matches.append({"banco_id": bi, "libro_id": li, "dias_diferencia": dias,
-                                 "confianza": f"Baja (solo valor exacto, sin validar nombre — {detalle})"})
-                break
+    # Se arman TODOS los pares posibles con el mismo valor (sin filtrar por fecha) y se
+    # resuelven de más cercano en el tiempo a más lejano, para que un par con fechas casi
+    # iguales nunca pierda su candidato ideal frente a uno que se cruzó antes por el orden
+    # en que se recorrió la lista.
+    candidatos = []
+    for bi in pendientes_banco:
+        for li in libro_por_valor.get(_centavos(banco.at[bi, "valor"]), []):
+            dias = abs((banco.at[bi, "fecha"] - libro.at[li, "fecha"]).days)
+            candidatos.append((dias, bi, li))
+    candidatos.sort(key=lambda t: t[0])
+
+    for dias, bi, li in candidatos:
+        if banco.at[bi, "matched"] or libro.at[li, "matched"]:
+            continue
+        banco.at[bi, "matched"] = True
+        libro.at[li, "matched"] = True
+        detalle = "misma fecha" if dias == 0 else f"{dias} día(s) de diferencia"
+        matches.append({"banco_id": bi, "libro_id": li, "dias_diferencia": dias,
+                         "confianza": f"Baja (solo valor exacto, sin validar nombre — {detalle})"})
 
     return matches
 
 
 def reconciliar(df_banco, df_libro, tolerancia_dias=3, tolerancia_dias_nombre=15, agrupar_por_fecha=True,
-                 max_grupo=6, buscar_posibles=True, margen_valor=100000,
-                 segunda_ronda=True, tolerancia_dias_valor=30):
+                 max_grupo=6, buscar_posibles=True, margen_valor=100000):
     """Cruza por valor exacto y fecha (exacta primero, luego dentro de la tolerancia); si con el valor
     exacto el nombre del beneficiario también coincide, se acepta una ventana de fecha más amplia
     (`tolerancia_dias_nombre`). Luego agrupa (varios movimientos de un lado, en la misma fecha, que
-    suman exactamente el valor de uno o varios del otro). Después corre la **segunda ronda**
-    (`segunda_ronda`): lo que quedó pendiente se cruza solo por valor exacto y fecha, ya sin
-    exigir el nombre. Y, por último, marca como 'posibles' los pares que coinciden en fecha y
-    nombre pero cuyo valor difiere hasta `margen_valor`."""
+    suman exactamente el valor de uno o varios del otro) y, por último, marca como 'posibles' los
+    pares que coinciden en fecha y nombre pero cuyo valor difiere hasta `margen_valor`.
+
+    La **segunda ronda** (cruzar lo pendiente solo por valor, sin nombre) NO corre aquí: es
+    `aplicar_segunda_ronda()`, una función aparte con su propio botón en la interfaz, para que
+    se pueda revisar lo pendiente antes de decidir aplicarla."""
     banco = df_banco.copy()
     libro = df_libro.copy()
     banco["matched"] = False
@@ -740,14 +743,7 @@ def reconciliar(df_banco, df_libro, tolerancia_dias=3, tolerancia_dias_nombre=15
         # Pasada 3c: lotes completos de días (el concepto se lee del banco, no del asiento).
         grupos += _agrupar_lotes_por_dia(banco, libro)
 
-    # Pasada 4: SEGUNDA RONDA sobre lo que quedó pendiente — solo valor exacto y fecha, sin
-    # nombre. Va después de todas las pasadas que sí validan el nombre (para que esas tengan
-    # prioridad) y antes de los 'posibles': un par con el valor idéntico al centavo es mejor
-    # conciliación que un par que coincide en nombre pero arrastra una diferencia de valor.
-    if segunda_ronda:
-        matches += _cruces_solo_valor(banco, libro, tolerancia_dias=tolerancia_dias_valor)
-
-    # Pasada 5: coinciden en fecha y nombre, pero el valor difiere hasta el margen permitido
+    # Pasada 4: coinciden en fecha y nombre, pero el valor difiere hasta el margen permitido
     posibles = []
     if buscar_posibles and margen_valor > 0:
         posibles = _cruces_posibles_por_margen(banco, libro, margen_valor=margen_valor,
@@ -787,6 +783,51 @@ def reconciliar(df_banco, df_libro, tolerancia_dias=3, tolerancia_dias_nombre=15
                  "diferencia": float(p["diferencia"])} for p in posibles]
 
     return cruces, posibles
+
+
+def aplicar_segunda_ronda(df_banco, df_libro, cruces, posibles):
+    """**Segunda ronda**, como acción aparte con su propio botón: no repite `reconciliar()` ni
+    toca los cruces que ya existen, solo mira lo que sigue pendiente (lo que ningún cruce ni
+    ningún 'posible' está usando) y lo cruza por **valor exacto, sin límite de fecha** — la
+    fecha solo desempata cuando hay varios candidatos con el mismo valor — sin exigir el
+    nombre (`_cruces_solo_valor`). Pensada para correr después de que alguien revise lo
+    pendiente de la conciliación normal y decida que vale la pena aplicar el criterio menos
+    estricto.
+
+    Devuelve `(cruces_nuevos, cantidad)`: la lista de cruces original más los que se agregaron,
+    y cuántos se agregaron (para poder avisarlo en la interfaz)."""
+    banco = df_banco.copy()
+    libro = df_libro.copy()
+    banco["matched"] = False
+    libro["matched"] = False
+    for c in cruces:
+        for i in c["banco_ids"]:
+            banco.at[i, "matched"] = True
+        for i in c["libro_ids"]:
+            libro.at[i, "matched"] = True
+    for p in posibles:
+        banco.at[p["banco_id"], "matched"] = True
+        libro.at[p["libro_id"], "matched"] = True
+
+    matches = _cruces_solo_valor(banco, libro)
+
+    ahora = datetime.now().strftime("%d/%m/%Y %H:%M")
+    numeros = [int(c["id"][2:]) for c in cruces
+               if str(c.get("id", "")).startswith("A-") and c["id"][2:].isdigit()]
+    siguiente = max(numeros, default=0) + 1
+
+    nuevos = []
+    for i, m in enumerate(matches):
+        nuevos.append({
+            "id": f"A-{siguiente + i:04d}",
+            "origen": "Automática",
+            "motivo": m["confianza"],
+            "fecha_hora": ahora,
+            "banco_ids": [int(m["banco_id"])],
+            "libro_ids": [int(m["libro_id"])],
+        })
+
+    return cruces + nuevos, len(nuevos)
 
 
 # --------------------------------------------------------------------------------
