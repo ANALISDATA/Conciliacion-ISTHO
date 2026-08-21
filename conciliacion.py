@@ -591,13 +591,67 @@ def _cruces_posibles_por_margen(banco, libro, margen_valor=100000, tolerancia_di
     return posibles
 
 
+def _cruces_solo_valor(banco, libro, tolerancia_dias=30):
+    """**Segunda ronda.** Sobre lo que quedó pendiente después de todas las pasadas que
+    validan el nombre, cruza 1 a 1 por **valor exacto**, usando la fecha solo para elegir
+    entre candidatos: el más cercano gana.
+
+    Existe porque muchos movimientos quedaban pendientes con el valor idéntico en los dos
+    lados y la única variable que fallaba era el nombre: el extracto viene truncado a ~28
+    caracteres, o describe el canal (`"TRANSFERENCIA CTA SUC VIRTUAL"`) en vez de la
+    contraparte, o la contabilidad registró el asiento a nombre de otro tercero.
+
+    Al no validar el nombre es la pasada **menos segura** de todas, así que:
+    - Corre de última, sobre las sobras: todo lo que sí se pudo verificar por nombre ya cruzó.
+    - Exige el valor **exacto al centavo** y el mismo signo; no acepta márgenes ni sumas.
+    - Recorre por distancia de fecha creciente (primero todos los de la misma fecha, luego
+      los de 1 día, y así), para que un par con fecha exacta nunca pierda contra uno lejano.
+    - Marca sus cruces con confianza **Baja**, para que se puedan revisar y deshacer.
+    """
+    matches = []
+    pendientes_banco = [i for i in banco.index if not banco.at[i, "matched"]]
+    if not pendientes_banco:
+        return matches
+
+    # Los pendientes de contabilidad, indexados por valor: es la variable que manda.
+    libro_por_valor = defaultdict(list)
+    for i in libro.index:
+        if not libro.at[i, "matched"]:
+            libro_por_valor[_centavos(libro.at[i, "valor"])].append(i)
+    if not libro_por_valor:
+        return matches
+
+    for dias in range(0, tolerancia_dias + 1):
+        for bi in pendientes_banco:
+            if banco.at[bi, "matched"]:
+                continue
+            candidatos = libro_por_valor.get(_centavos(banco.at[bi, "valor"]), [])
+            fecha_b = banco.at[bi, "fecha"]
+            for li in candidatos:
+                if libro.at[li, "matched"]:
+                    continue
+                if abs((fecha_b - libro.at[li, "fecha"]).days) != dias:
+                    continue
+                banco.at[bi, "matched"] = True
+                libro.at[li, "matched"] = True
+                detalle = "misma fecha" if dias == 0 else f"{dias} día(s) de diferencia"
+                matches.append({"banco_id": bi, "libro_id": li, "dias_diferencia": dias,
+                                 "confianza": f"Baja (solo valor exacto, sin validar nombre — {detalle})"})
+                break
+
+    return matches
+
+
 def reconciliar(df_banco, df_libro, tolerancia_dias=3, tolerancia_dias_nombre=15, agrupar_por_fecha=True,
-                 max_grupo=6, buscar_posibles=True, margen_valor=100000):
+                 max_grupo=6, buscar_posibles=True, margen_valor=100000,
+                 segunda_ronda=True, tolerancia_dias_valor=30):
     """Cruza por valor exacto y fecha (exacta primero, luego dentro de la tolerancia); si con el valor
     exacto el nombre del beneficiario también coincide, se acepta una ventana de fecha más amplia
     (`tolerancia_dias_nombre`). Luego agrupa (varios movimientos de un lado, en la misma fecha, que
-    suman exactamente el valor de uno o varios del otro) y, por último, marca como 'posibles' los
-    pares que coinciden en fecha y nombre pero cuyo valor difiere hasta `margen_valor`."""
+    suman exactamente el valor de uno o varios del otro). Después corre la **segunda ronda**
+    (`segunda_ronda`): lo que quedó pendiente se cruza solo por valor exacto y fecha, ya sin
+    exigir el nombre. Y, por último, marca como 'posibles' los pares que coinciden en fecha y
+    nombre pero cuyo valor difiere hasta `margen_valor`."""
     banco = df_banco.copy()
     libro = df_libro.copy()
     banco["matched"] = False
@@ -686,7 +740,14 @@ def reconciliar(df_banco, df_libro, tolerancia_dias=3, tolerancia_dias_nombre=15
         # Pasada 3c: lotes completos de días (el concepto se lee del banco, no del asiento).
         grupos += _agrupar_lotes_por_dia(banco, libro)
 
-    # Pasada 4: coinciden en fecha y nombre, pero el valor difiere hasta el margen permitido
+    # Pasada 4: SEGUNDA RONDA sobre lo que quedó pendiente — solo valor exacto y fecha, sin
+    # nombre. Va después de todas las pasadas que sí validan el nombre (para que esas tengan
+    # prioridad) y antes de los 'posibles': un par con el valor idéntico al centavo es mejor
+    # conciliación que un par que coincide en nombre pero arrastra una diferencia de valor.
+    if segunda_ronda:
+        matches += _cruces_solo_valor(banco, libro, tolerancia_dias=tolerancia_dias_valor)
+
+    # Pasada 5: coinciden en fecha y nombre, pero el valor difiere hasta el margen permitido
     posibles = []
     if buscar_posibles and margen_valor > 0:
         posibles = _cruces_posibles_por_margen(banco, libro, margen_valor=margen_valor,

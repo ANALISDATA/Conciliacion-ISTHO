@@ -129,6 +129,24 @@ max_grupo = st.sidebar.slider(
     help="Cuántos movimientos como máximo se combinan para buscar que la suma coincida."
 )
 
+segunda_ronda = st.sidebar.checkbox(
+    "Segunda ronda: cruzar lo pendiente solo por valor", value=True,
+    help="Después del cruce normal, vuelve sobre lo que quedó pendiente y lo cruza **por valor "
+         "exacto**, usando la fecha solo para desempatar — ya sin exigir que el nombre coincida.\n\n"
+         "Sirve porque muchos pendientes tienen el valor idéntico en los dos lados y lo único que "
+         "falla es el nombre: el extracto viene cortado a 28 caracteres, o dice el canal "
+         "(«TRANSFERENCIA CTA SUC VIRTUAL») en vez del tercero.\n\n"
+         "Es la pasada menos segura, así que sus cruces quedan marcados como **Baja** en "
+         "Conciliados y se pueden deshacer uno por uno."
+)
+tolerancia_valor = st.sidebar.slider(
+    "Tolerancia de fecha en la segunda ronda (días)", min_value=0, max_value=60, value=30,
+    disabled=not segunda_ronda,
+    help="Qué tan lejos puede estar la fecha para aceptar el cruce por valor. Siempre gana el "
+         "candidato con la fecha más cercana. Con 30 días busca en todo el mes; bájalo si "
+         "aparecen cruces que no corresponden."
+)
+
 buscar_posibles = st.sidebar.checkbox(
     "Detectar posibles cruces con diferencia de valor", value=True,
     help="Busca pares que coinciden en fecha y en el nombre del beneficiario, pero cuyo valor no es "
@@ -220,6 +238,7 @@ if ejecutar:
                 df_banco, df_libro, tolerancia_dias=tolerancia, tolerancia_dias_nombre=tolerancia_nombre,
                 agrupar_por_fecha=agrupar, max_grupo=max_grupo,
                 buscar_posibles=buscar_posibles, margen_valor=margen_valor,
+                segunda_ronda=segunda_ronda, tolerancia_dias_valor=tolerancia_valor,
             )
             periodo = periodo_desde_fechas(list(df_banco["fecha"]) + list(df_libro["fecha"]))
             st.session_state["estado"] = {

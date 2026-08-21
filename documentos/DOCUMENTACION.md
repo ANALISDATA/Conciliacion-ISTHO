@@ -110,9 +110,12 @@ de más:
   ANTIOQUIA"`. Sin esto, la palabra rota ensuciaba la comparación y descartaba la entidad
   correcta.
 
-Los casos que deben seguir **sin** cruzar siguen bloqueados: `"Jorge Luis Garc"` contra
-`"CAMELO BELTRAN JHON SEBASTIAN"` no comparte ninguna palabra, aunque el valor y la fecha
-coincidan por casualidad.
+Los casos que deben seguir **sin** cruzar en las pasadas 1-3 siguen bloqueados:
+`"Jorge Luis Garc"` contra `"CAMELO BELTRAN JHON SEBASTIAN"` no comparte ninguna palabra,
+aunque el valor y la fecha coincidan por casualidad. **Esta pareja sí termina cruzando en la
+segunda ronda** (pasada 4, sección siguiente), que ya no valida nombre — a propósito, y por
+eso queda marcada Baja y es fácil de deshacer si al revisar resulta ser la coincidencia
+equivocada.
 
 > Se exige **subconjunto** y no igualdad exacta de palabras justamente porque el banco trunca.
 > Con igualdad estricta se perderían casi todos los cruces reales.
@@ -127,7 +130,8 @@ coincidan por casualidad.
 | 3 | `_agrupar_por_fecha` | Varios movimientos de un lado que **suman** el valor de uno del otro, acotando candidatos por nombre. Ej: un anticipo y su «pago sobre anticipo» = 1 solo giro bancario. |
 | 3b | `_agrupar_por_concepto` | Cuando el banco **itemiza** y la contabilidad **consolida**. Reconoce el concepto (Nómina, Seguridad social, 4x1000, IVA, Intereses, Retenciones, Comisiones) y suma todos los del mismo tipo. |
 | 3c | `_agrupar_lotes_por_dia` | **Lotes de días completos.** El concepto se lee del lado del banco (que sí lo describe) y del contable solo se exige que el valor calce y la fecha esté cerca. |
-| 4 | `_cruces_posibles_por_margen` | Coinciden en fecha y nombre pero el valor difiere hasta `margen_valor` ($100.000). **No se dan por conciliados**: quedan aparte para revisión manual. |
+| 4 | `_cruces_solo_valor` | **Segunda ronda.** Sobre lo que sigue pendiente después de todas las pasadas anteriores, cruza 1 a 1 por **valor exacto al centavo**, sin exigir el nombre — la fecha más cercana desempata. Motivo queda marcado **Baja**. |
+| 5 | `_cruces_posibles_por_margen` | Coinciden en fecha y nombre pero el valor difiere hasta `margen_valor` ($100.000). **No se dan por conciliados**: quedan aparte para revisión manual. |
 
 **Ejemplos reales que resuelven las pasadas de agrupación:**
 
@@ -137,6 +141,32 @@ coincidan por casualidad.
   banco pagó el 13/06 (`111.580.741`) más la del 16/06 (`3.526.890`) — 96 movimientos en un
   solo cruce. La descripción contable no dice «nómina» por ningún lado, por eso esta pasada
   lee el concepto del banco.
+
+### Segunda ronda: cruzar lo pendiente solo por valor
+
+Después de las pasadas 1-3c (todas exigen que el nombre valide), muchos movimientos quedaban
+pendientes con **el mismo valor en los dos lados** y lo único que fallaba era el nombre: el
+extracto viene cortado a 28 caracteres, describe el canal (`"TRANSFERENCIA CTA SUC VIRTUAL"`)
+en vez de la contraparte, o la contabilidad registró el asiento a nombre de otro tercero.
+Medido en Junio 2026: **75 cruces adicionales**, pendientes de banco 615→540 y de
+contabilidad 151→76 (en Mayo 2026: 76 cruces, 443→367 y 156→80).
+
+`_cruces_solo_valor()` corre al final, sobre las sobras, con reglas más laxas a propósito:
+- **Valor exacto al centavo y mismo signo**, nunca con margen ni sumando varios movimientos.
+- Recorre por distancia de fecha creciente (primero la misma fecha, luego 1 día, etc.);
+  cuando hay más de un candidato con el mismo valor, gana el de fecha más cercana.
+- Controlada por `segunda_ronda` (activada por defecto) y `tolerancia_dias_valor` (30 días
+  por defecto) en el sidebar.
+- Sus cruces quedan con motivo **«Baja (solo valor exacto, sin validar nombre...)»**, para
+  distinguirlos a simple vista en la hoja Conciliados y poder deshacerlos si al revisar
+  resultan ser coincidencia y no el mismo movimiento.
+
+**Es una decisión de diseño deliberada, no un descuido**: el caso que la sección anterior
+documenta como "no debe cruzar" —`"Jorge Luis Garc"` contra `"CAMELO BELTRAN JHON
+SEBASTIAN"`— sí termina cruzando aquí, porque el valor y la fecha sí son idénticos. Se acepta
+el riesgo de alguna coincidencia porque, revisado contra los datos reales, la enorme mayoría
+de lo que cruza esta pasada son pares genuinos que la validación de nombre no pudo confirmar
+(nombre truncado, descripción del canal, tercero distinto en la contabilidad), no coincidencias.
 
 ### Notas de rendimiento
 - Las búsquedas de subconjuntos son combinatorias. Hay topes deliberados
