@@ -22,6 +22,13 @@ encontradas. **Consultarlo antes de modificar el motor o la interfaz.**
   (a propósito, para poder revisar lo pendiente antes de aplicarla): cruza lo que queda
   pendiente por valor exacto **sin ningún límite de fecha**, sin exigir nombre, marcada
   «Baja». Ver documentación.
+- Dentro de `reconciliar()` (automático, sin botón aparte) hay dos mejoras agregadas después
+  de probarlas contra Julio 2026: **pasada 0** `_agrupar_por_manifiesto()` (agrupa
+  `C. EGRESO TRANSPORTE` por número `MFxxxx` leído de `DETALLE`, más confiable que el nombre)
+  y el **rescate de nombre desde `DETALLE`** en `load_libro_auxiliar()` (cuando
+  `NOMBRE BENEFICIARIO` es solo "ISTHO SAS", sin nombre útil, se prueba a leer el nombre real
+  de la cola de `DETALLE`, típico en nómina). Cualquier cambio a estas dos zonas necesita
+  volver a correr la prueba de integridad en los 3 meses de prueba, no solo en Mayo/Junio.
 - El extracto bancario **viene truncado a ~28 caracteres**; por eso la comparación de nombres
   exige subconjunto (no igualdad) y tolera prefijos.
 - Al probar: cerrar la consola y reabrir `Iniciar_App.bat`. Refrescar el navegador no recarga
@@ -29,4 +36,6 @@ encontradas. **Consultarlo antes de modificar el motor o la interfaz.**
 
 ## Archivos de prueba
 
-`..\Extracto Junio 2026.xlsx` y `..\LIBRO AUXILIAR JUNIO 2026.xlsx` (también existen los de Mayo).
+`..\Extracto Junio 2026.xlsx` y `..\LIBRO AUXILIAR JUNIO 2026.xlsx` (también existen los de Mayo
+y de Julio — el de Julio es `LIBRO AUXILIAR JULIO 2026-2.xlsx`, el libro auxiliar oficial
+completo, el que sirvió para validar la pasada de manifiesto y el rescate de nombre).

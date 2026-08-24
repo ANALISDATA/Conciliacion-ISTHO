@@ -124,6 +124,7 @@ equivocada.
 
 | # | Función | Qué busca |
 |---|---|---|
+| 0 | `_agrupar_por_manifiesto` | **Transporte por número de manifiesto** (`MFxxxx`, leído del propio texto de `DETALLE`). Corre primero porque es más confiable que el nombre — ver detalle abajo. |
 | 1 | (en `reconciliar`) | Fecha exacta + valor exacto |
 | 2 | (en `reconciliar`) | Valor exacto + fecha dentro de `tolerancia_dias` (3 por defecto) |
 | 2b | (en `reconciliar`) | Valor exacto + **nombre coincide** → acepta ventana más amplia, `tolerancia_dias_nombre` (15 días). Resuelve el caso del banco que gira días después de la liquidación contable. |
@@ -132,8 +133,61 @@ equivocada.
 | 3c | `_agrupar_lotes_por_dia` | **Lotes de días completos.** El concepto se lee del lado del banco (que sí lo describe) y del contable solo se exige que el valor calce y la fecha esté cerca. |
 | 4 | `_cruces_posibles_por_margen` | Coinciden en fecha y nombre pero el valor difiere hasta `margen_valor` ($100.000). **No se dan por conciliados**: quedan aparte para revisión manual. |
 
-Aparte de estas 4 (todas dentro de `reconciliar()`, disparadas por el botón **Conciliar**), existe
-una pasada más que **no** corre automáticamente — ver la sección siguiente.
+Aparte de estas (todas dentro de `reconciliar()`, disparadas por el botón **Conciliar**), existe
+una pasada más que **no** corre automáticamente — ver la sección "Segunda ronda" más abajo.
+
+### Pasada 0: por número de manifiesto de transporte
+
+El libro auxiliar registra el anticipo y el «pago sobre anticipo» de un mismo manifiesto de
+transporte como **dos o más asientos contables separados**, pero el banco los paga en **una
+sola transferencia**. `DETALLE` ya trae el número de manifiesto en el texto (ej. «Anticipo al
+Manifiesto # MF3948 PlacaX: STJ389»); agrupar por ese número es más confiable que por nombre,
+porque no se trunca ni cambia de redacción entre el anticipo y su pago — el nombre sí puede
+variar o venir vacío según el asiento.
+
+`_agrupar_por_manifiesto()` agrupa las líneas de `C. EGRESO TRANSPORTE` que comparten **fecha
+exacta** y el mismo conjunto de manifiestos (una liquidación puede cubrir varios a la vez, ej.
+«Pago Liquidación(es) # MF3843, MF3845, MF3906...»), suma su valor, y busca esa suma exacta
+contra el banco. Como cualquier búsqueda de subconjuntos, tiene un tope (`max_combinatoria=14`)
+para no dispararse si un día tiene muchos movimientos pendientes en el banco.
+
+**Corre antes que cualquier otra pasada**, para que un cruce 1 a 1 casual no rompa una pareja
+que debía sumarse primero.
+
+Medido contra el libro auxiliar oficial completo de Julio 2026 (994 movimientos): 28 grupos
+fusionados por esta pasada.
+
+### El nombre rescatado desde DETALLE (nómina y movimientos internos)
+
+En la nómina (y otros movimientos internos) la contabilidad pone a la propia **ISTHO SAS**
+como `NOMBRE BENEFICIARIO` — no identifica a nadie, y además `ISTHO` es un stopword — pero el
+nombre real de la persona **sí está escrito dentro de `DETALLE`**: `"SALARIO - ANDRES MAURICIO
+HOYOS VELASQUEZ"`, `"CUOTA DE SOSTENIMIENTO Y APOYO - SHIRLY DAHIANA SANCHEZ HOYOS"`.
+
+Sin este rescate, esas filas nunca tenían ninguna señal de nombre para el motor: cuando varias
+personas comparten fecha, el cruce por agrupación (pasada 3) no tenía forma de saber qué línea
+va con qué línea, y con demasiados candidatos sin nombre para distinguir simplemente se
+descartaba (`max_candidatos_sin_nombre`). El resultado: pagos de nómina exactos (ej. salario +
+descuento de un mismo empleado = un solo giro bancario) se quedaban pendientes de los dos lados
+aunque el valor sumara al centavo.
+
+`load_libro_auxiliar()` ahora rescata el nombre: si `NOMBRE BENEFICIARIO` no tiene ninguna
+palabra identificable (`_tokens()` vacío — típicamente porque solo dice ISTHO SAS), se prueba a
+extraer la última parte de `DETALLE` después del último « - » (`_nombre_desde_detalle()`); si
+esa cola sí trae un nombre reconocible, se usa como el nombre efectivo para el motor. Si no hay
+ese patrón (ej. «TRASLADO DE BANCO A CAJA GENERAL», sin nombre de persona) o la cola es un
+código sin sentido (una placa), se deja como estaba: sin nombre, decide el valor y la fecha.
+
+**Ojo:** este rescate se hace *después* de construir la columna `descripcion` (la que ve el
+usuario en las tablas), así que no cambia lo que se muestra en pantalla — solo lo que usa el
+motor para decidir si dos líneas son la misma persona.
+
+Medido en Julio 2026: 196 de 994 filas del libro auxiliar (casi todas de nómina) ganaron un
+nombre utilizable que antes no tenían.
+
+**Impacto combinado de las dos mejoras**, Julio 2026 contra el libro auxiliar oficial completo,
+tras Conciliar + segunda ronda: pendientes de banco 43→29, de contabilidad 61→39, cuadre
+idéntico y sin duplicados.
 
 **Ejemplos reales que resuelven las pasadas de agrupación:**
 

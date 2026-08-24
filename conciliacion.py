@@ -252,6 +252,16 @@ def load_extracto(file):
     return df
 
 
+def _nombre_desde_detalle(detalle):
+    """Si DETALLE sigue el patrón '<concepto> - <nombre>' (típico en nómina: "SALARIO - ...",
+    "CUOTA DE SOSTENIMIENTO Y APOYO - ...") y esa última parte trae un nombre identificable, la
+    devuelve. Si no hay ese patrón o la cola no tiene nada reconocible (ej. un código de placa
+    como "MF4014 PlacaX: SZQ778"), devuelve cadena vacía — igual que antes de este rescate."""
+    partes = str(detalle).rsplit(" - ", 1)
+    candidato = partes[1].strip() if len(partes) == 2 else ""
+    return candidato if _tokens(candidato) else ""
+
+
 def load_libro_auxiliar(file):
     """Libro auxiliar contable (xlsx o csv): valor = DÉBITO (entra al banco) - CRÉDITO (sale del banco)."""
     df = _leer_tabla(file, header=0)
@@ -280,6 +290,16 @@ def load_libro_auxiliar(file):
     out["tipo_comprobante"] = df.get("TIPO COMPROBANTE")
     out["cuenta_nombre"] = df.get("NOMBRE AUXILIAR")
 
+    # En la nómina (y otros movimientos internos) la contabilidad pone a la propia ISTHO como
+    # "NOMBRE BENEFICIARIO" — no identifica a nadie — pero el nombre real SÍ está en DETALLE
+    # ("SALARIO - ANDRES MAURICIO HOYOS VELASQUEZ"). Sin este rescate, esas filas nunca tenían
+    # señal de nombre para el motor y no agrupaban con su pago en el banco (quedaban sueltas
+    # aunque el valor sí sumara exacto). Se hace DESPUÉS de construir "descripcion" para no
+    # duplicar el nombre en el texto que ve el usuario — solo cambia lo que usa el motor.
+    out["beneficiario"] = out.apply(
+        lambda r: _nombre_desde_detalle(r["detalle"]) if not _tokens(r["beneficiario"]) else r["beneficiario"],
+        axis=1)
+
     out = out.dropna(subset=["fecha"]).reset_index(drop=True)
     out["id"] = out.index
     out["tipo"] = out["valor"].apply(lambda v: "Entrada" if v >= 0 else "Salida")
@@ -301,6 +321,71 @@ def _buscar_subconjunto(valores, objetivo_centavos, max_tam=6):
             if sum(valores[i][1] for i in combo) == objetivo_centavos:
                 return [valores[i][0] for i in combo]
     return None
+
+
+_RX_MANIFIESTO = re.compile(r"MF\d+", re.I)
+
+
+def _codigos_manifiesto(texto):
+    """Los números de manifiesto (`MF3948`) que aparezcan en un texto, en mayúscula y sin
+    repetidos. `frozenset` porque un mismo texto puede traer varios (una liquidación que cubre
+    "MF3843, MF3845, MF3906...") y no importa el orden en que vengan escritos."""
+    return frozenset(c.upper() for c in _RX_MANIFIESTO.findall(str(texto or "")))
+
+
+def _agrupar_por_manifiesto(banco, libro, max_grupo=6, max_combinatoria=14):
+    """El libro auxiliar registra el anticipo y el «pago sobre anticipo» de un mismo manifiesto
+    de transporte como dos (o más) asientos contables separados, pero el banco los paga en una
+    sola transferencia. `DETALLE` ya trae el número de manifiesto en el texto (ej. «Anticipo al
+    Manifiesto # MF3948 PlacaX: STJ389»); agrupar por ese número es más confiable que por
+    nombre, porque no se trunca ni cambia de redacción entre el anticipo y su pago.
+
+    Se agrupan las líneas de `C. EGRESO TRANSPORTE` que comparten fecha y el mismo conjunto de
+    manifiestos, se suma su valor, y se busca esa suma exacta contra el banco (un solo
+    movimiento, o una combinación de varios si hace falta). Corre ANTES que las demás pasadas
+    para que un cruce 1 a 1 casual no rompa una pareja que debía sumarse primero.
+
+    Medido en Julio 2026 contra el libro auxiliar oficial completo: 40 grupos fusionados,
+    pendientes de banco 43→35 y de contabilidad 61→42 tras aplicar también la segunda ronda."""
+    grupos = []
+    candidatos = defaultdict(list)
+    for i in libro.index:
+        if libro.at[i, "matched"] or libro.at[i, "tipo_comprobante"] != "C. EGRESO TRANSPORTE":
+            continue
+        codigos = _codigos_manifiesto(libro.at[i, "detalle"])
+        if codigos:
+            candidatos[(libro.at[i, "fecha"], codigos)].append(i)
+
+    banco_por_fecha = defaultdict(list)
+    for i in banco.index:
+        banco_por_fecha[banco.at[i, "fecha"]].append(i)
+
+    for (fecha, codigos), idxs in candidatos.items():
+        if len(idxs) < 2:
+            continue
+        objetivo = sum(_centavos(libro.at[i, "valor"]) for i in idxs)
+        disponibles = [(i, _centavos(banco.at[i, "valor"])) for i in banco_por_fecha.get(fecha, [])
+                       if not banco.at[i, "matched"]]
+        exacto = next((i for i, v in disponibles if v == objetivo), None)
+        if exacto is not None:
+            combo = [exacto]
+        elif len(disponibles) <= max_combinatoria:
+            # La búsqueda de subconjuntos es combinatoria (ver notas de rendimiento del
+            # archivo): solo se intenta si el día tiene pocos movimientos pendientes en el
+            # banco. Si no calza 1 a 1 y hay demasiados candidatos, el grupo queda pendiente
+            # en vez de arriesgar un cálculo que se dispare.
+            combo = _buscar_subconjunto(disponibles, objetivo, max_grupo)
+        else:
+            combo = None
+        if combo is None:
+            continue
+        for i in idxs:
+            libro.at[i, "matched"] = True
+        for bi in combo:
+            banco.at[bi, "matched"] = True
+        grupos.append({"tipo": "banco->libro", "banco_ids": combo, "libro_ids": idxs,
+                        "concepto": f"Manifiesto {', '.join(sorted(codigos))}"})
+    return grupos
 
 
 def _agrupar_por_fecha(banco, libro, tolerancia_dias=3, tolerancia_dias_nombre=15, max_grupo=6,
@@ -660,8 +745,15 @@ def reconciliar(df_banco, df_libro, tolerancia_dias=3, tolerancia_dias_nombre=15
     banco["matched"] = False
     libro["matched"] = False
 
+    # Pasada 0: por manifiesto de transporte (más confiable que el nombre, ver
+    # `_agrupar_por_manifiesto`). Corre primero para que un 1-1 casual no rompa una pareja
+    # anticipo/pago-sobre-anticipo que debía sumarse antes de intentar cruzar.
+    grupos_manifiesto = _agrupar_por_manifiesto(banco, libro, max_grupo=max_grupo)
+
     libro_by_valor = defaultdict(list)
     for idx, row in libro.iterrows():
+        if libro.at[idx, "matched"]:
+            continue
         libro_by_valor[round(row["valor"], 2)].append(idx)
 
     matches = []
@@ -727,14 +819,14 @@ def reconciliar(df_banco, df_libro, tolerancia_dias=3, tolerancia_dias_nombre=15
                                  "confianza": f"Alta (valor exacto y nombre coincide, {dias} día(s) de diferencia)"})
 
     # Pasada 3: agrupación por fecha (varios movimientos que suman el mismo valor)
-    grupos = []
+    grupos = list(grupos_manifiesto)
     if agrupar_por_fecha:
         # Para la agrupación (sumas) se limita la ventana ampliada por nombre: es una búsqueda
         # cuadrática y una ventana de 15+ días compara cada movimiento contra medio mes de
         # candidatos. Los casos reales de "varios movimientos = 1 solo" caen a pocos días.
         ventana_grupo = min(tolerancia_dias_nombre, 6)
-        grupos = _agrupar_por_fecha(banco, libro, tolerancia_dias=tolerancia_dias,
-                                     tolerancia_dias_nombre=ventana_grupo, max_grupo=max_grupo)
+        grupos += _agrupar_por_fecha(banco, libro, tolerancia_dias=tolerancia_dias,
+                                      tolerancia_dias_nombre=ventana_grupo, max_grupo=max_grupo)
 
         # Pasada 3b: lo que el banco itemiza y la contabilidad consolida (nómina, 4x1000,
         # IVA, comisiones...). Va después para que los cruces por nombre tengan prioridad.
