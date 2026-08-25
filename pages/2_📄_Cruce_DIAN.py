@@ -11,7 +11,7 @@ from conciliacion_dian import (buscar_causacion, construir_vistas_dian, crear_cr
                                 reconciliar_dian, vista_duplicados)
 from config import CLAVE_ACCESO
 from excel_export import EMPRESA, LOGO_PATH, NIT, build_tabla_workbook, periodo_desde_fechas
-from ui import (AZUL, GRIS, NARANJA, ROJO, VERDE, acceso_permitido, badge, hero, icono,
+from ui import (AZUL, GRIS, NARANJA, ROJO, VERDE, acceso_permitido, badge, boton_inicio, hero, icono,
                  inject_css, loader, panel_toggle, section, sidebar_brand, sidebar_step,
                  stat_cards, tabla)
 
@@ -39,8 +39,10 @@ if not acceso_permitido(CLAVE_ACCESO, EMPRESA, "Sistema de Conciliaciones ISTHO"
 
 # ---------------------------------------------------------------- Sidebar --
 panel_toggle()
+boton_inicio()
 sidebar_brand("ISTHO S.A.S.", "Cruce DIAN")
-st.sidebar.page_link("app.py", label="Volver al menú", icon=":material/home:")
+# El enlace al menú vive ahora en `boton_inicio()` (fijo arriba a la derecha, visible aunque
+# se esconda el panel), así que aquí sobraba tenerlo repetido.
 st.sidebar.divider()
 
 sidebar_step(1, "Archivos")

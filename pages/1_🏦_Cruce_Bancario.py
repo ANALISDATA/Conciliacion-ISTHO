@@ -10,7 +10,7 @@ from conciliacion import (aplicar_segunda_ronda, construir_vistas, crear_cruce_m
 from config import CLAVE_ACCESO
 from excel_export import (CUENTA_DEFECTO, EMPRESA, LOGO_PATH, NIT, build_tabla_workbook,
                            periodo_desde_fechas)
-from ui import (GRIS, NARANJA, ROJO, VERDE, VERDE_OSC, badge, hero, icono, inject_css,
+from ui import (GRIS, NARANJA, ROJO, VERDE, VERDE_OSC, badge, boton_inicio, hero, icono, inject_css,
                  loader, login_css, login_encabezado, login_pie, panel_toggle, section,
                  sidebar_brand, sidebar_step, stat_cards, tabla)
 
@@ -97,6 +97,7 @@ if "_retomar_pendiente" in st.session_state:
 
 # ---------------------------------------------------------------- Sidebar --
 panel_toggle()
+boton_inicio()
 sidebar_brand()
 
 sidebar_step(1, "Archivos")

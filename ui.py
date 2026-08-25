@@ -222,7 +222,11 @@ def inject_css():
     #MainMenu, footer,
     .viewerBadge_container__1QSob,
     a[href*="streamlit.io/cloud"],
-    a[href*="share.streamlit.io"] {{ display: none !important; }}
+    a[href*="share.streamlit.io"],
+    /* La lista de páginas que Streamlit agrega solo al principio del panel (con el nombre
+       del archivo, "app", como primer renglón). Sobra y desentona: para elegir proceso está
+       la pantalla del menú, y para volver a ella el botón dorado del encabezado. */
+    [data-testid="stSidebarNav"] {{ display: none !important; }}
     div[data-testid="stElementContainer"]:has(> div:empty) {{ display: none; }}
 
     /* ==================== SIDEBAR OSCURO ==================== */
@@ -401,23 +405,25 @@ def inject_css():
     /* Botón dorado "volver al menú": vive en el encabezado, no en el panel lateral, para
        que siga a la vista incluso si alguien esconde el panel — de ahí que sea un <a> con
        navegación normal (href="/") y no dependa de ningún widget del sidebar. */
-    .istho-hero-inicio {{
-        position: relative; z-index: 1; flex-shrink: 0; margin-left: 0.9rem;
-        width: 38px; height: 38px; border-radius: 11px; display: flex;
-        align-items: center; justify-content: center;
-        text-decoration: none; cursor: pointer; color: #0E1B33;
+    /* Botón "volver al menú" (ver `boton_inicio()`): fijo arriba a la derecha, para que
+       siga a la vista aunque se esconda el panel lateral o se baje por una tabla larga. */
+    div[class*="st-key-ir_inicio"] {{
+        position: fixed !important; top: 0.85rem; right: 1.2rem; z-index: 999999;
+        width: auto !important;
+    }}
+    div[class*="st-key-ir_inicio"] a {{
         background: linear-gradient(135deg, {ORO_OSCURO} 0%, {ORO} 55%, {ORO_CLARO} 100%);
-        box-shadow: 0 6px 16px rgba(212,175,55,0.35);
-        transition: transform .13s ease, box-shadow .13s ease, filter .13s ease;
+        border-radius: 10px !important; padding: 0.4rem 0.8rem !important;
+        box-shadow: 0 8px 20px rgba(212,175,55,0.38);
+        transition: transform .13s ease, filter .13s ease;
     }}
-    .istho-hero-inicio:hover {{
+    div[class*="st-key-ir_inicio"] a:hover {{
         filter: brightness(1.08); transform: translateY(-1px);
-        box-shadow: 0 9px 20px rgba(212,175,55,0.45);
     }}
-    .istho-hero.compacto .istho-hero-inicio {{
-        width: 30px; height: 30px; border-radius: 9px; margin-left: 0.6rem;
+    div[class*="st-key-ir_inicio"] a span,
+    div[class*="st-key-ir_inicio"] a p {{
+        color: #0E1B33 !important; font-weight: 800 !important; font-size: 0.8rem !important;
     }}
-    .istho-hero.compacto .istho-hero-inicio svg {{ width: 16px; height: 16px; }}
 
     /* ==================== SECCIONES ==================== */
     .istho-section {{
@@ -719,6 +725,20 @@ def sidebar_step(numero, titulo):
     """), unsafe_allow_html=True)
 
 
+def boton_inicio():
+    """Botón dorado fijo arriba a la derecha para volver al menú principal.
+
+    Es un `st.page_link` y no un enlace HTML a propósito: un `<a href="/">` normal hace que
+    el navegador recargue toda la página, y con eso se pierde `session_state` — o sea que
+    volvía a pedir la clave y se perdía la conciliación cargada. `page_link` navega por
+    dentro de Streamlit y conserva la sesión.
+
+    Va fijo (`position: fixed`) para que siga a la vista aunque se esconda el panel lateral
+    o se baje por una tabla larga."""
+    with st.container(key="ir_inicio"):
+        st.page_link("app.py", label="Menú", icon=":material/home:")
+
+
 def panel_toggle():
     """Botón para esconder/mostrar el panel lateral por completo. En esta versión de
     Streamlit no existe ningún control nativo para volver a mostrarlo una vez oculto (se
@@ -775,9 +795,11 @@ def hero(title, subtitle, empresa=None, periodo=None, compacto=False, inicio=Tru
             <span>{periodo or ""}</span>
         </div>
         """)
-    inicio_html = (_flat('<a href="/" target="_self" class="istho-hero-inicio" '
-                         'title="Volver al menú principal">' + icono("inicio", 19, grosor=1.8)
-                         + '</a>') if inicio else "")
+    # El botón de "volver al menú" ya NO va aquí dentro: un <a href="/"> hace que el
+    # navegador recargue la página entera, y eso borra `session_state` — la sesión se perdía
+    # y volvía a pedir la clave. Ahora es `boton_inicio()`, que usa la navegación interna de
+    # Streamlit (conserva la sesión) y se posiciona sola sobre el encabezado.
+    inicio_html = ""
     clase = "istho-hero compacto" if compacto else "istho-hero"
     st.markdown(_flat(f"""
     <div class="{clase}">
