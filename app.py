@@ -11,7 +11,7 @@ import streamlit as st
 
 from config import CLAVE_ACCESO
 from excel_export import EMPRESA, LOGO_PATH
-from ui import acceso_permitido, hero, inject_css, sidebar_brand
+from ui import acceso_permitido, inject_css, menu_css, menu_encabezado, menu_pie, menu_tarjeta
 
 st.set_page_config(page_title="Financiera ISTHO", layout="wide",
                    page_icon=LOGO_PATH if os.path.exists(LOGO_PATH) else "🔷")
@@ -22,25 +22,28 @@ if not acceso_permitido(CLAVE_ACCESO, EMPRESA, "Financiera ISTHO",
                         "Elige el proceso que necesitas"):
     st.stop()
 
-sidebar_brand("ISTHO S.A.S.", "Financiera")
+menu_css()
+menu_encabezado("Área financiera · ISTHO S.A.S.", "Centro de Cruces",
+                "Elige el proceso que vas a trabajar hoy")
 
-hero("Financiera ISTHO", "Elige el proceso que quieres trabajar", empresa=EMPRESA)
-
-st.write("")
-col1, col2 = st.columns(2)
+col1, col2 = st.columns(2, gap="large")
 
 with col1:
-    with st.container(border=True):
-        st.markdown("### 🏦 Cruce Bancario")
-        st.caption("Cruza el extracto bancario contra el libro auxiliar contable — "
-                   "por fecha, valor, nombre y número de manifiesto.")
-        st.page_link("pages/1_🏦_Cruce_Bancario.py", label="Entrar a Cruce Bancario",
-                     icon="🏦", use_container_width=True)
+    menu_tarjeta(
+        "bancario", "🏦", "Cruce Bancario",
+        "Concilia el extracto del banco contra el libro auxiliar contable — "
+        "por fecha, valor, nombre y número de manifiesto.",
+        "Ingresar aquí →",
+        on_click=lambda: st.switch_page("pages/1_🏦_Cruce_Bancario.py"),
+    )
 
 with col2:
-    with st.container(border=True):
-        st.markdown("### 📄 Cruce DIAN")
-        st.caption("Cruza los documentos electrónicos de la DIAN contra las causaciones "
-                   "de Avansant — muestra qué facturas todavía no se han digitado.")
-        st.page_link("pages/2_📄_Cruce_DIAN.py", label="Entrar a Cruce DIAN",
-                     icon="📄", use_container_width=True)
+    menu_tarjeta(
+        "dian", "📄", "Cruce DIAN",
+        "Cruza los documentos electrónicos de la DIAN contra las causaciones de "
+        "Avansant — muestra qué facturas todavía no se han digitado.",
+        "Ingresar aquí →",
+        on_click=lambda: st.switch_page("pages/2_📄_Cruce_DIAN.py"),
+    )
+
+menu_pie(f"{EMPRESA} · Módulo de cruces financieros")

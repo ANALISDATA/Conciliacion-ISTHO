@@ -929,3 +929,146 @@ def acceso_permitido(clave_acceso, empresa, titulo, subtitulo):
                         st.error("Clave incorrecta. Vuelve a intentarlo.")
         login_pie(empresa)
     return False
+
+
+# ===========================================================================
+# PANTALLA DE MENÚ (tras el acceso)
+#
+# Mismo lenguaje visual que la pantalla de acceso —azul marino con acentos
+# dorados y el patrón de circuito— para que elegir el proceso se sienta como
+# la continuación natural del login, no un salto brusco a una app distinta.
+# Aparte de `login_css()` a propósito: esta solo se inyecta en la pantalla de
+# menú, y así el login no carga CSS que no necesita.
+# ===========================================================================
+def menu_css():
+    st.markdown(f"""
+    <style>
+    .stApp {{
+        background:
+            radial-gradient(circle at 12% 16%, rgba(212,175,55,0.18), transparent 45%),
+            radial-gradient(circle at 88% 84%, rgba(34,211,238,0.18), transparent 46%),
+            linear-gradient(135deg, #0C1740 0%, #1B3A9E 52%, #10245E 100%) !important;
+    }}
+    .stApp::before {{
+        content: ""; position: fixed; inset: 0; pointer-events: none;
+        background-image: url("data:image/svg+xml,{_PATRON_LOGIN}");
+        background-repeat: repeat; opacity: 0.75;
+    }}
+    section[data-testid="stSidebar"] {{ display: none !important; }}
+    .block-container {{ padding-top: 6vh !important; max-width: 980px !important; }}
+
+    .istho-menu-logo {{
+        display: block; margin: 0 auto 1.3rem; height: 58px; background: #fff;
+        padding: 10px 16px; border-radius: 14px; width: fit-content;
+        box-shadow: 0 10px 26px rgba(0,0,0,0.42), 0 0 0 1px rgba(212,175,55,0.30);
+    }}
+    .istho-menu-eyebrow {{
+        text-align: center; color: {ORO}; font-size: 0.7rem; font-weight: 700;
+        text-transform: uppercase; letter-spacing: 0.26em; margin-bottom: 0.6rem;
+    }}
+    .istho-menu-title {{
+        text-align: center; color: #FFFFFF; font-family: 'Sora', sans-serif;
+        font-size: 2.35rem; font-weight: 800; margin: 0; letter-spacing: -0.02em;
+    }}
+    .istho-menu-sub {{
+        text-align: center; color: rgba(226,236,255,0.66); font-size: 0.98rem;
+        margin: 0.7rem 0 2.6rem;
+    }}
+    .istho-menu-sep {{
+        width: 64px; height: 2px; margin: 1.3rem auto 0; border-radius: 2px;
+        background: linear-gradient(90deg, transparent, {ORO}, transparent);
+    }}
+
+    /* ---------------- Tarjetas de proceso ---------------- */
+    div[class*="st-key-menu_card_"] {{
+        position: relative;
+        background: rgba(8, 18, 52, 0.62) !important;
+        border: 1px solid rgba(212,175,55,0.30) !important;
+        border-radius: 20px !important;
+        padding: 2rem 1.9rem 1.7rem !important;
+        box-shadow: 0 30px 70px rgba(4, 10, 34, 0.50), inset 0 1px 0 rgba(255,255,255,0.08);
+        backdrop-filter: blur(16px);
+        transition: transform .18s ease, border-color .18s ease, box-shadow .18s ease;
+        height: 100%;
+    }}
+    div[class*="st-key-menu_card_"]:hover {{
+        transform: translateY(-4px);
+        border-color: rgba(212,175,55,0.62) !important;
+        box-shadow: 0 34px 80px rgba(4, 10, 34, 0.6), 0 0 0 1px rgba(212,175,55,0.20);
+    }}
+    div[class*="st-key-menu_card_"]::before {{
+        content: ""; position: absolute; top: 0; left: 10%; right: 10%; height: 2px;
+        background: linear-gradient(90deg, transparent, {ORO}, {ORO_CLARO}, {ORO}, transparent);
+        border-radius: 2px;
+    }}
+    .istho-menu-icon {{
+        width: 58px; height: 58px; border-radius: 16px; display: flex;
+        align-items: center; justify-content: center; font-size: 1.7rem;
+        background: linear-gradient(135deg, rgba(212,175,55,0.22), rgba(212,175,55,0.06));
+        border: 1px solid rgba(212,175,55,0.34); margin-bottom: 1.1rem;
+    }}
+    div[class*="st-key-menu_card_"] h3 {{
+        color: #FFFFFF !important; font-family: 'Sora', sans-serif;
+        font-size: 1.28rem !important; font-weight: 800 !important;
+        margin: 0 0 0.6rem !important; letter-spacing: -0.01em;
+    }}
+    div[class*="st-key-menu_card_"] p {{
+        color: rgba(226,236,255,0.70) !important; font-size: 0.9rem !important;
+        line-height: 1.5 !important; margin: 0 0 1.5rem !important;
+    }}
+
+    /* Mismo botón dorado del login, para que "entrar" se vea igual en toda la app */
+    div[class*="st-key-menu_card_"] button {{
+        background: linear-gradient(135deg, {ORO_OSCURO} 0%, {ORO} 42%, {ORO_CLARO} 100%) !important;
+        color: #0E1B33 !important; border: none !important; border-radius: 12px !important;
+        font-weight: 800 !important; font-size: 0.86rem !important;
+        letter-spacing: 0.08em; text-transform: uppercase;
+        padding: 0.75rem 1rem !important;
+        box-shadow: 0 10px 26px rgba(212,175,55,0.28);
+        transition: transform .13s ease, box-shadow .13s ease, filter .13s ease;
+    }}
+    div[class*="st-key-menu_card_"] button p {{
+        color: #0E1B33 !important; font-weight: 800 !important; letter-spacing: 0.08em;
+    }}
+    div[class*="st-key-menu_card_"] button:hover {{
+        filter: brightness(1.07); transform: translateY(-1px);
+        box-shadow: 0 14px 32px rgba(212,175,55,0.38);
+    }}
+
+    .istho-menu-pie {{
+        text-align: center; color: rgba(226,236,255,0.42); font-size: 0.76rem;
+        margin-top: 2.6rem; letter-spacing: 0.02em;
+    }}
+    </style>
+    """, unsafe_allow_html=True)
+
+
+def menu_encabezado(eyebrow, titulo, subtitulo):
+    logo_b64 = _logo_b64()
+    logo = (f'<img src="data:image/png;base64,{logo_b64}" class="istho-menu-logo" />'
+            if logo_b64 else "")
+    st.markdown(_flat(f"""
+    <div>
+        {logo}
+        <div class="istho-menu-eyebrow">{eyebrow}</div>
+        <div class="istho-menu-title">{titulo}</div>
+        <div class="istho-menu-sub">{subtitulo}</div>
+    </div>
+    """), unsafe_allow_html=True)
+
+
+def menu_tarjeta(key, icono, titulo, descripcion, boton, on_click):
+    """Una tarjeta de proceso, estilo login. `on_click` se llama solo cuando se
+    presiona el botón (normalmente `lambda: st.switch_page("pages/...")`)."""
+    with st.container(key=f"menu_card_{key}"):
+        st.markdown(_flat(f"""
+        <div class="istho-menu-icon">{icono}</div>
+        <h3>{titulo}</h3>
+        <p>{descripcion}</p>
+        """), unsafe_allow_html=True)
+        if st.button(boton, key=f"menu_btn_{key}", use_container_width=True):
+            on_click()
+
+
+def menu_pie(texto):
+    st.markdown(_flat(f'<div class="istho-menu-pie">{texto}</div>'), unsafe_allow_html=True)
