@@ -23,7 +23,7 @@ if not acceso_permitido(CLAVE_ACCESO, EMPRESA, "Financiera ISTHO",
     st.stop()
 
 menu_css()
-menu_encabezado("Área financiera · ISTHO S.A.S.", "Centro de Cruces",
+menu_encabezado("Área financiera · ISTHO S.A.S.", "Panel de Conciliaciones",
                 "Elige el proceso que vas a trabajar hoy")
 
 col1, col2 = st.columns(2, gap="large")

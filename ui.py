@@ -980,6 +980,12 @@ def menu_css():
     }}
 
     /* ---------------- Tarjetas de proceso ---------------- */
+    /* Columnas estiradas a la misma altura (por defecto cada una mide solo lo que
+       necesita su contenido, así que si una descripción es más larga que la otra,
+       las tarjetas quedaban de tamaño distinto). */
+    div[data-testid="stHorizontalBlock"] {{ align-items: stretch; }}
+    div[data-testid="column"] {{ display: flex; }}
+    div[data-testid="column"] > div {{ flex: 1; }}
     div[class*="st-key-menu_card_"] {{
         position: relative;
         background: rgba(8, 18, 52, 0.62) !important;
@@ -990,7 +996,12 @@ def menu_css():
         backdrop-filter: blur(16px);
         transition: transform .18s ease, border-color .18s ease, box-shadow .18s ease;
         height: 100%;
+        display: flex;
+        flex-direction: column;
     }}
+    /* El botón siempre al fondo de la tarjeta, sin importar si la descripción de al
+       lado ocupa una línea más o menos — así los dos botones quedan alineados. */
+    div[class*="st-key-menu_card_"] div[data-testid="stButton"] {{ margin-top: auto; }}
     div[class*="st-key-menu_card_"]:hover {{
         transform: translateY(-4px);
         border-color: rgba(212,175,55,0.62) !important;
