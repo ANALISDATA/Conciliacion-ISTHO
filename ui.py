@@ -636,6 +636,21 @@ def panel_toggle():
                 st.session_state["panel_oculto"] = False
                 st.rerun()
     else:
+        # El estado de "oculto" lo decide SOLO este botón, nunca Streamlit: si alguien usa
+        # el control nativo para esconder el panel (que no tiene forma de deshacerse desde
+        # ahí, ver el docstring), esta regla lo fuerza visible de todos modos, pase lo que
+        # pase — por eso tantos !important, para ganarle a cualquier técnica que use
+        # Streamlit por su cuenta (display, visibility, ancho o transform).
+        st.markdown(_flat("""
+        <style>
+        section[data-testid="stSidebar"] {
+            display: block !important; visibility: visible !important;
+            transform: none !important; margin-left: 0 !important;
+            width: auto !important; min-width: 244px !important;
+        }
+        section[data-testid="stSidebar"] > div { width: auto !important; }
+        </style>
+        """), unsafe_allow_html=True)
         with st.sidebar.container(key="panel_ocultar"):
             if st.button("◀  Ocultar panel", key="btn_panel_ocultar", use_container_width=True):
                 st.session_state["panel_oculto"] = True
