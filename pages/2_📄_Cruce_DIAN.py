@@ -12,7 +12,7 @@ from conciliacion_dian import (buscar_causacion, construir_vistas_dian, crear_cr
 from config import CLAVE_ACCESO
 from excel_export import EMPRESA, LOGO_PATH, NIT, build_tabla_workbook, periodo_desde_fechas
 from ui import (AZUL, GRIS, NARANJA, ROJO, VERDE, acceso_permitido, badge, hero, inject_css,
-                 loader, section, sidebar_brand, sidebar_step, stat_cards, tabla)
+                 loader, panel_toggle, section, sidebar_brand, sidebar_step, stat_cards, tabla)
 
 st.set_page_config(page_title="Cruce DIAN", layout="wide",
                    page_icon=LOGO_PATH if os.path.exists(LOGO_PATH) else "📄")
@@ -34,6 +34,7 @@ if not acceso_permitido(CLAVE_ACCESO, EMPRESA, "Cruce DIAN",
     st.stop()
 
 # ---------------------------------------------------------------- Sidebar --
+panel_toggle()
 sidebar_brand("ISTHO S.A.S.", "Cruce DIAN")
 st.sidebar.page_link("app.py", label="← Volver al menú", icon="🏠")
 st.sidebar.divider()

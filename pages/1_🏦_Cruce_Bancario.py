@@ -11,8 +11,8 @@ from config import CLAVE_ACCESO
 from excel_export import (CUENTA_DEFECTO, EMPRESA, LOGO_PATH, NIT, build_tabla_workbook,
                            periodo_desde_fechas)
 from ui import (GRIS, NARANJA, ROJO, VERDE, VERDE_OSC, badge, hero, inject_css, loader,
-                 login_css, login_encabezado, login_pie, section, sidebar_brand, sidebar_step,
-                 stat_cards, tabla)
+                 login_css, login_encabezado, login_pie, panel_toggle, section, sidebar_brand,
+                 sidebar_step, stat_cards, tabla)
 
 # El ícono de la pestaña del navegador es el propio logo; si el archivo no estuviera,
 # se cae a un rombo para que la app no falle al arrancar.
@@ -93,6 +93,7 @@ if "_retomar_pendiente" in st.session_state:
             st.session_state["saldo_inicial_libro"] = cargado["saldo_inicial_libro"]
 
 # ---------------------------------------------------------------- Sidebar --
+panel_toggle()
 sidebar_brand()
 
 sidebar_step(1, "Archivos")

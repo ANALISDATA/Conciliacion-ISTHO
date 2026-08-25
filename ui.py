@@ -92,6 +92,27 @@ def inject_css():
        le quitan los eventos de puntero, devolviéndoselos solo a sus propios botones. */
     [data-testid="stHeader"] {{ background: transparent; pointer-events: none; }}
 
+    /* Botón propio para esconder/mostrar el panel lateral (ver `panel_toggle()`): en esta
+       versión de Streamlit el control nativo para recuperar el panel una vez escondido no
+       existe en la página (ni el elemento está en el DOM), así que no hay que depender de
+       él — este botón vive en el panel mismo (para ocultarlo) y, cuando está oculto, flota
+       fijo en la esquina para poder traerlo de vuelta sin importar dónde se haya scrolleado. */
+    div[class*="st-key-panel_ocultar"] button,
+    div[class*="st-key-panel_mostrar"] button {{
+        background: linear-gradient(135deg, {ORO_OSCURO} 0%, {ORO} 55%, {ORO_CLARO} 100%) !important;
+        color: #0E1B33 !important; border: none !important; border-radius: 10px !important;
+        font-weight: 800 !important; font-size: 0.82rem !important;
+        box-shadow: 0 8px 20px rgba(212,175,55,0.38);
+        transition: transform .13s ease, filter .13s ease;
+    }}
+    div[class*="st-key-panel_ocultar"] button p,
+    div[class*="st-key-panel_mostrar"] button p {{ color: #0E1B33 !important; font-weight: 800 !important; }}
+    div[class*="st-key-panel_ocultar"] button:hover,
+    div[class*="st-key-panel_mostrar"] button:hover {{ filter: brightness(1.08); transform: translateY(-1px); }}
+    div[class*="st-key-panel_mostrar"] {{
+        position: fixed !important; top: 0.85rem; left: 0.85rem; z-index: 999999;
+    }}
+
     /* Se ocultan los accesos de desarrollo: Fork, GitHub, "Manage app", el menú de
        opciones y la insignia de Streamlit. Quien entra solo debe ver la conciliación,
        sin puertas al código ni a la configuración del servidor. */
@@ -277,6 +298,26 @@ def inject_css():
         display: block; color: rgba(255,255,255,0.85); font-size: 0.82rem; font-weight: 700;
     }}
     .istho-hero-badge span {{ color: rgba(255,255,255,0.45); font-size: 0.72rem; }}
+
+    /* Botón dorado "volver al menú": vive en el encabezado, no en el panel lateral, para
+       que siga a la vista incluso si alguien esconde el panel — de ahí que sea un <a> con
+       navegación normal (href="/") y no dependa de ningún widget del sidebar. */
+    .istho-hero-inicio {{
+        position: relative; z-index: 1; flex-shrink: 0; margin-left: 0.9rem;
+        width: 40px; height: 40px; border-radius: 11px; display: flex;
+        align-items: center; justify-content: center; font-size: 1.15rem;
+        text-decoration: none; cursor: pointer;
+        background: linear-gradient(135deg, {ORO_OSCURO} 0%, {ORO} 55%, {ORO_CLARO} 100%);
+        box-shadow: 0 6px 16px rgba(212,175,55,0.35);
+        transition: transform .13s ease, box-shadow .13s ease, filter .13s ease;
+    }}
+    .istho-hero-inicio:hover {{
+        filter: brightness(1.08); transform: translateY(-1px);
+        box-shadow: 0 9px 20px rgba(212,175,55,0.45);
+    }}
+    .istho-hero.compacto .istho-hero-inicio {{
+        width: 30px; height: 30px; font-size: 0.92rem; border-radius: 9px; margin-left: 0.6rem;
+    }}
 
     /* ==================== SECCIONES ==================== */
     .istho-section {{
@@ -576,7 +617,36 @@ def sidebar_step(numero, titulo):
     """), unsafe_allow_html=True)
 
 
-def hero(title, subtitle, empresa=None, periodo=None, compacto=False):
+def panel_toggle():
+    """Botón para esconder/mostrar el panel lateral por completo. En esta versión de
+    Streamlit no existe ningún control nativo para volver a mostrarlo una vez oculto (se
+    verificó que el elemento ni siquiera está en el DOM), así que este botón reemplaza esa
+    función por completo con `session_state`, sin depender de nada de Streamlit.
+
+    Se llama una sola vez, al principio de cada página: si el panel está oculto, dibuja el
+    botón "Mostrar panel" flotando fijo en la esquina (fuera del panel, para que se pueda
+    alcanzar aunque el panel esté escondido); si está visible, deja el botón "Ocultar panel"
+    como primer elemento del panel mismo."""
+    oculto = st.session_state.get("panel_oculto", False)
+    if oculto:
+        st.markdown("<style>section[data-testid='stSidebar']{display:none !important;}</style>",
+                    unsafe_allow_html=True)
+        with st.container(key="panel_mostrar"):
+            if st.button("▶  Mostrar panel", key="btn_panel_mostrar"):
+                st.session_state["panel_oculto"] = False
+                st.rerun()
+    else:
+        with st.sidebar.container(key="panel_ocultar"):
+            if st.button("◀  Ocultar panel", key="btn_panel_ocultar", use_container_width=True):
+                st.session_state["panel_oculto"] = True
+                st.rerun()
+
+
+def hero(title, subtitle, empresa=None, periodo=None, compacto=False, inicio=True):
+    """`inicio=True` agrega un botón dorado "volver al menú" al final del encabezado —
+    un enlace normal (no un widget), así que funciona sin importar el estado del panel
+    lateral. Se puede desactivar en pantallas donde no tenga sentido (no se usa por ahora,
+    pero queda disponible)."""
     logo_b64 = _logo_b64()
     logo_html = (f'<img src="data:image/png;base64,{logo_b64}" class="istho-hero-logo" />'
                  if logo_b64 else "")
@@ -588,6 +658,8 @@ def hero(title, subtitle, empresa=None, periodo=None, compacto=False):
             <span>{periodo or ""}</span>
         </div>
         """)
+    inicio_html = (_flat('<a href="/" target="_self" class="istho-hero-inicio" '
+                         'title="Volver al menú principal">🏠</a>') if inicio else "")
     clase = "istho-hero compacto" if compacto else "istho-hero"
     st.markdown(_flat(f"""
     <div class="{clase}">
@@ -597,6 +669,7 @@ def hero(title, subtitle, empresa=None, periodo=None, compacto=False):
             <p>{subtitle}</p>
         </div>
         {badge_html}
+        {inicio_html}
     </div>
     """), unsafe_allow_html=True)
 
