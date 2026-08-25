@@ -180,6 +180,72 @@ def barra_resultado(df_filtrado, df_total, titulo_excel, nombre_archivo, key):
         )
 
 
+def tabla_con_cruce(df, key, anchos=None, alto=720):
+    """Tabla editable con una columna «Causación» al final y un botón que concilia de una
+    sola vez todo lo que se haya escrito.
+
+    Se usa en TODAS las hojas que listan documentos DIAN sin cruzar (pendientes, ambiguos,
+    notas de crédito): el flujo real es revisar el documento, buscarlo en el correo,
+    registrarlo en Avansant y anotar aquí mismo el número — sin tener que irse a otra hoja
+    a buscarlo en un desplegable.
+
+    `df` debe traer la columna `id` (el índice del documento en df_dian); se oculta al
+    mostrar la tabla, pero es lo que permite saber a qué documento pertenece cada fila."""
+    editable = df.copy()
+    editable["Causación"] = ""
+
+    config = {
+        "id": None,  # índice interno del documento, no se muestra
+        "Fecha Emisión": st.column_config.DateColumn(format="DD/MM/YYYY", width=95, disabled=True),
+        "Comprobante DIAN": st.column_config.TextColumn(width=140, disabled=True),
+        "NIT": st.column_config.TextColumn(width=105, disabled=True),
+        "Emisor": st.column_config.TextColumn(width=280, disabled=True),
+        "Total": st.column_config.NumberColumn(format="accounting", width=135, disabled=True),
+        "Causación": st.column_config.TextColumn(
+            "✏️ Causación", width=130,
+            help="Escribe aquí el número de causación de Avansant y presiona el botón de abajo."),
+    }
+    for col, ancho in (anchos or {}).items():
+        config[col] = st.column_config.TextColumn(width=ancho, disabled=True)
+    # Todo lo que no se configuró arriba se bloquea igual: la única casilla editable de la
+    # tabla debe ser «Causación».
+    for col in editable.columns:
+        config.setdefault(col, st.column_config.TextColumn(disabled=True))
+
+    # `gen_dian` en la key: al conciliar, la tabla se redibuja desde cero y así un número ya
+    # aplicado no queda escrito en la casilla de un documento distinto.
+    # El alto se ajusta al contenido (con un tope): con 4 filas no tiene sentido dejar media
+    # pantalla de renglones vacíos debajo.
+    editado = st.data_editor(editable, hide_index=True, use_container_width=True,
+                             height=min(alto, 78 + len(editable) * 36),
+                             key=f"editor_{key}_{st.session_state['gen_dian']}",
+                             column_config=config)
+
+    escritos = [(int(r["id"]), str(r["Causación"]).strip())
+                for _, r in editado.iterrows() if str(r["Causación"]).strip()]
+    col_a, col_b = st.columns([1.5, 3])
+    with col_a:
+        if st.button(f":material/playlist_add_check: Conciliar los diligenciados ({len(escritos)})",
+                     type="primary", disabled=not escritos, use_container_width=True,
+                     key=f"btn_lote_{key}"):
+            nuevos, aplicados, problemas = cruzar_en_lote(df_dian, df_avansat, cruces, escritos)
+            st.session_state["estado_dian"]["cruces"] = nuevos
+            # Un documento que estaba en «Requiere revisión» y ya se resolvió a mano sale de
+            # esa lista: si no, seguiría apareciendo ahí como pendiente de decidir.
+            resueltos = {i for i, _ in escritos}
+            st.session_state["estado_dian"]["ambiguos"] = [
+                a for a in ambiguos if a["dian_id"] not in resueltos]
+            db.guardar_cambios(periodo, st.session_state["estado_dian"])
+            st.session_state["gen_dian"] += 1
+            st.session_state["aviso_dian"] = f"{aplicados} documento(s) conciliado(s)."
+            st.session_state["problemas_dian"] = problemas
+            st.rerun()
+    with col_b:
+        if escritos:
+            st.caption(f"Vas a conciliar {len(escritos)} documento(s). Los que tengan el número "
+                       "mal escrito se avisan y el resto sí se aplica.")
+
+
 # --------------------------------------------------------------- Barra superior --
 # Iconos Material (`:material/nombre:`), no emoji: Streamlit los reconoce en las etiquetas
 # y los pinta con el mismo trazo sobrio en cualquier equipo, mientras que los emoji los
@@ -205,7 +271,10 @@ vista = seleccion or vista
 # ------------------------------------------------------------ Indicadores --
 total_dian = float(df_dian["total"].sum())
 total_avansat = float(df_avansat["valor"].sum())
-n_dian_relevante = len(df_dian) - int(df_dian["es_nota_credito"].sum())
+# El universo a conciliar son las facturas, más cualquier nota de crédito que sí se haya
+# cruzado a mano. Se cuenta con `df_nc` (que ya excluye las cruzadas) y no con el total de
+# notas de crédito del archivo: si no, al cruzar una a mano el porcentaje pasaría de 100%.
+n_dian_relevante = len(df_dian) - len(df_nc)
 n_avansat = len(df_avansat)
 n_cruzados = len(df_cruz)
 n_pendientes = len(df_sin)
@@ -253,7 +322,7 @@ if vista == HOJAS[0]:
         {"label": "Valor total Avansant", "value": f"${total_avansat:,.0f}", "icon": icono("libro"),
          "accent": AZUL, "sub": f"{n_avansat:,} causación(es)"},
         {"label": "Líneas DIAN", "value": f"{n_dian_relevante:,}", "icon": icono("capas"),
-         "accent": GRIS, "sub": f"+ {int(df_dian['es_nota_credito'].sum())} nota(s) de crédito aparte"},
+         "accent": GRIS, "sub": f"+ {len(df_nc)} nota(s) de crédito aparte"},
         {"label": "Líneas Avansant", "value": f"{n_avansat:,}", "icon": icono("pila"),
          "accent": GRIS, "sub": "causaciones (Tipo = CAUSACION)"},
     ])
@@ -351,28 +420,33 @@ elif vista == HOJAS[3]:
         st.success("No hay documentos ambiguos — todo lo que tenía más de un candidato ya se resolvió.")
     else:
         st.caption("Estos documentos tienen **más de una** causación posible en Avansant — la app "
-                  "no elige a ciegas. Revísalos en **Cruce manual** escribiendo el número correcto.")
+                  "no elige a ciegas. Mira la columna **Candidatos**, decide cuál corresponde y "
+                  "escribe su número en la última columna.")
         filtrado = filtrar(df_amb, "ambiguos", "Fecha Emisión",
                            ["Comprobante DIAN", "NIT", "Emisor", "Candidatos"])
-        barra_resultado(filtrado, df_amb, "CRUCE DIAN — REQUIERE REVISIÓN",
+        barra_resultado(filtrado.drop(columns=["id"]), df_amb.drop(columns=["id"]),
+                        "CRUCE DIAN — REQUIERE REVISIÓN",
                         "CRUCE DIAN - REQUIERE REVISION", "ambiguos")
-        tabla(filtrado, height=850)
+        tabla_con_cruce(filtrado, "ambiguos",
+                        anchos={"Emisor": 190, "Motivo": 175, "Candidatos": 300}, alto=560)
 
 # =============================================== HOJA 4 · NOTAS DE CRÉDITO ==
 elif vista == HOJAS[4]:
-    st.caption("Notas de crédito electrónicas de la DIAN. Hoy no tienen nada con qué cruzar en "
-              "Avansant (no generan causación ni reversión registrada), así que se muestran "
-              "aparte — no cuentan como \"pendientes\".")
+    st.caption("Notas de crédito electrónicas de la DIAN. No cruzan solas porque en Avansant no "
+              "generan una causación propia — por eso no cuentan como \"pendientes\". Si alguna "
+              "sí quedó registrada, escribe su número de causación en la última columna.")
     if df_nc.empty:
         st.info("No hay notas de crédito en este período.")
     else:
-        mostrar = df_nc[["fecha_emision", "comprobante", "nit_emisor", "nombre_emisor", "total"]].rename(
+        mostrar = df_nc[["id", "fecha_emision", "comprobante", "nit_emisor", "nombre_emisor",
+                         "total"]].rename(
             columns={"fecha_emision": "Fecha Emisión", "comprobante": "Comprobante DIAN",
                      "nit_emisor": "NIT", "nombre_emisor": "Emisor", "total": "Total"})
         filtrado = filtrar(mostrar, "notas_credito", "Fecha Emisión", ["Comprobante DIAN", "NIT", "Emisor"])
-        barra_resultado(filtrado, mostrar, "CRUCE DIAN — NOTAS DE CRÉDITO",
+        barra_resultado(filtrado.drop(columns=["id"]), mostrar.drop(columns=["id"]),
+                        "CRUCE DIAN — NOTAS DE CRÉDITO",
                         "CRUCE DIAN - NOTAS CREDITO", "notas_credito")
-        tabla(filtrado, height=600)
+        tabla_con_cruce(filtrado, "notas_credito", alto=420)
 
 # ============================================= HOJA 5 · DUPLICADOS AVANSANT ==
 elif vista == HOJAS[5]:
@@ -405,49 +479,7 @@ elif vista == HOJAS[6]:
                            columna_orden_alt="Emisor")
         barra_resultado(filtrado.drop(columns=["id"]), mostrar,
                         "CRUCE DIAN — PENDIENTES", "CRUCE DIAN - PENDIENTES", "pendientes_dian")
-
-        editable = filtrado.copy()
-        editable["Causación"] = ""
-        # `gen_dian` en la key: al cruzar, la tabla se vuelve a dibujar desde cero y así los
-        # números ya aplicados no quedan escritos en la casilla de un documento distinto.
-        editado = st.data_editor(
-            editable, hide_index=True, use_container_width=True, height=760,
-            key=f"editor_pendientes_{st.session_state['gen_dian']}",
-            column_config={
-                "id": None,  # índice interno, no se muestra
-                "Fecha Emisión": st.column_config.DateColumn(format="DD/MM/YYYY", width=95,
-                                                              disabled=True),
-                "Comprobante DIAN": st.column_config.TextColumn(width=140, disabled=True),
-                "NIT": st.column_config.TextColumn(width=105, disabled=True),
-                "Emisor": st.column_config.TextColumn(width=300, disabled=True),
-                "Total": st.column_config.NumberColumn(format="accounting", width=140,
-                                                        disabled=True),
-                "Causación": st.column_config.TextColumn(
-                    "✏️ Causación", width=130,
-                    help="Escribe aquí el número de causación de Avansant y presiona el botón de abajo."),
-            })
-
-        pendientes_escritos = [(int(r["id"]), str(r["Causación"]).strip())
-                               for _, r in editado.iterrows() if str(r["Causación"]).strip()]
-        col_a, col_b = st.columns([1.4, 3])
-        with col_a:
-            if st.button(f":material/playlist_add_check: Conciliar los diligenciados "
-                         f"({len(pendientes_escritos)})",
-                         type="primary", disabled=not pendientes_escritos,
-                         use_container_width=True, key="btn_lote_dian"):
-                nuevos, aplicados, problemas = cruzar_en_lote(
-                    df_dian, df_avansat, cruces, pendientes_escritos)
-                st.session_state["estado_dian"]["cruces"] = nuevos
-                db.guardar_cambios(periodo, st.session_state["estado_dian"])
-                st.session_state["gen_dian"] += 1
-                st.session_state["aviso_dian"] = f"{aplicados} documento(s) conciliado(s)."
-                st.session_state["problemas_dian"] = problemas
-                st.rerun()
-        with col_b:
-            if pendientes_escritos:
-                st.caption(f"Vas a conciliar {len(pendientes_escritos)} documento(s). "
-                           "Los que tengan el número mal escrito se avisan y el resto sí se aplica.")
-
+        tabla_con_cruce(filtrado, "pendientes", alto=760)
         st.caption(f"Suma total (sin filtrar): ${df_sin['total'].sum():,.2f}")
 
 # ======================================================= HOJA 7 · CRUCE MANUAL ==

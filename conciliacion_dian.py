@@ -318,13 +318,21 @@ def construir_vistas_dian(df_dian, df_avansat, cruces, ambiguos):
             f"ref «{df_avansat.at[i, 'referencia']}», {df_avansat.at[i, 'tercero']})"
             for i in a["avansat_ids"])
         filas.append({
+            # `id` va primero para poder asignarle la causación a mano desde la propia
+            # tabla (igual que en pendientes): la interfaz lo necesita para saber a qué
+            # documento pertenece cada fila, y lo oculta al mostrarla.
+            "id": int(a["dian_id"]),
             "Fecha Emisión": d["fecha_emision"], "Comprobante DIAN": d["comprobante"],
             "NIT": d["nit_emisor"], "Emisor": d["nombre_emisor"], "Total": d["total"],
             "Motivo": a["motivo"], "Candidatos": candidatos,
         })
     df_ambiguos = pd.DataFrame(filas)
 
-    df_notas_credito = df_dian[df_dian["es_nota_credito"]].reset_index(drop=True)
+    # Las notas de crédito no se cruzan solas, pero SÍ se pueden cruzar a mano si alguna
+    # quedó registrada en Avansant. Una vez cruzada sale de esta lista — si no, seguiría
+    # apareciendo aquí como si estuviera suelta, además de en «Cruzados».
+    df_notas_credito = df_dian[df_dian["es_nota_credito"]
+                                & (~df_dian.index.isin(dian_usados))].reset_index(drop=True)
 
     mascara_pendiente = (~df_dian.index.isin(dian_usados)) & (~df_dian["es_nota_credito"])
     df_sin_coincidencia = df_dian[mascara_pendiente].reset_index(drop=True)
