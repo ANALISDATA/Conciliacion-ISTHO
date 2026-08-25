@@ -10,9 +10,9 @@ from conciliacion import (aplicar_segunda_ronda, construir_vistas, crear_cruce_m
 from config import CLAVE_ACCESO
 from excel_export import (CUENTA_DEFECTO, EMPRESA, LOGO_PATH, NIT, build_tabla_workbook,
                            periodo_desde_fechas)
-from ui import (GRIS, NARANJA, ROJO, VERDE, VERDE_OSC, badge, hero, inject_css, loader,
-                 login_css, login_encabezado, login_pie, panel_toggle, section, sidebar_brand,
-                 sidebar_step, stat_cards, tabla)
+from ui import (GRIS, NARANJA, ROJO, VERDE, VERDE_OSC, badge, hero, icono, inject_css,
+                 loader, login_css, login_encabezado, login_pie, panel_toggle, section,
+                 sidebar_brand, sidebar_step, stat_cards, tabla)
 
 # El ícono de la pestaña del navegador es el propio logo; si el archivo no estuviera,
 # se cae a un rombo para que la app no falle al arrancar.
@@ -83,7 +83,7 @@ if "saldo_inicial_banco" not in st.session_state and db.disponible():
 
 # Streamlit no deja cambiar el valor guardado de un widget (ej. "saldo_inicial_banco")
 # después de que ese widget ya se dibujó en la misma corrida del script. El botón
-# "↻ Retomar" vive más abajo, después de que el campo de saldo inicial ya se dibujó, así
+# ":material/restore: Retomar" vive más abajo, después de que el campo de saldo inicial ya se dibujó, así
 # que no puede tocar session_state directamente: deja la conciliación cargada "pendiente"
 # aquí, ANTES de que se dibuje ningún widget, que es el único momento en que se puede.
 if "_retomar_pendiente" in st.session_state:
@@ -175,7 +175,7 @@ st.sidebar.caption("Sobre lo que quede pendiente después de conciliar: cruza po
                    "distintos y aun así cruzan). Útil cuando el extracto viene truncado o no "
                    "identifica al tercero. Queda marcado **Baja** y se puede deshacer.")
 segunda_ronda_click = st.sidebar.button(
-    "🔁 Cruzar pendientes por valor", use_container_width=True,
+    ":material/rule_settings: Cruzar pendientes por valor", use_container_width=True,
     disabled=st.session_state.get("estado") is None,
     help="Se habilita después de tener una conciliación cargada (con Conciliar o retomando una "
          "guardada)."
@@ -195,7 +195,7 @@ if st.session_state["estado"] is None and db.disponible():
     periodos = db.listar_periodos()
     if periodos:
         st.sidebar.divider()
-        st.sidebar.caption("☁️ Hay conciliaciones guardadas")
+        st.sidebar.caption(":material/cloud: Hay conciliaciones guardadas")
         # Se muestra la hora del último guardado junto a cada período: si dos personas
         # trabajaron el mismo mes, así se puede distinguir cuál versión es la más reciente
         # antes de decidir cuál retomar (dos guardados del mismo período se pisan entre sí,
@@ -207,7 +207,7 @@ if st.session_state["estado"] is None and db.disponible():
             index=None, placeholder="Elige un período…", key="periodo_a_retomar",
         )
         elegido = opciones.get(etiqueta)
-        if elegido and st.sidebar.button("↻ Retomar", use_container_width=True):
+        if elegido and st.sidebar.button(":material/restore: Retomar", use_container_width=True):
             # No se toca session_state["estado"] ni el saldo inicial aquí: el campo de saldo
             # inicial ya se dibujó más arriba en esta misma corrida, y Streamlit no deja
             # cambiar el valor de un widget después de dibujado. Se deja pendiente y el
@@ -295,8 +295,15 @@ df_conc, df_posibles, df_solo_banco, df_solo_libro = construir_vistas(
     df_banco, df_libro, cruces, posibles)
 
 # --------------------------------------------------------- Barra superior --
-HOJAS = ["📊 Resumen", "🔗 Conciliados", "🔍 Por revisar",
-         "🏦 Pend. extracto", "📘 Pend. libro auxiliar", "⚖️ Cruce manual"]
+# Iconos Material (`:material/nombre:`), no emoji: Streamlit los reconoce en las etiquetas
+# y los pinta con el mismo trazo sobrio en cualquier equipo, mientras que los emoji los
+# dibuja el sistema operativo y cambian de estilo entre Windows, Mac y móvil.
+HOJAS = [":material/donut_small: Resumen",
+         ":material/link: Conciliados",
+         ":material/rule: Por revisar",
+         ":material/account_balance: Pend. extracto",
+         ":material/menu_book: Pend. libro auxiliar",
+         ":material/compare_arrows: Cruce manual"]
 
 # Primero la franja azul y debajo la barra de hojas. Como el encabezado necesita saber qué
 # hoja está activa (para usar su versión delgada), se lee la selección ya guardada antes de
@@ -420,7 +427,7 @@ def barra_resultado(df_filtrado, df_total, titulo_excel, nombre_archivo, key):
         badge(f"Mostrando {len(df_filtrado):,} de {len(df_total):,} movimiento(s)")
     with col_b:
         st.download_button(
-            "⬇  Descargar esta tabla en Excel",
+            ":material/download: Descargar esta tabla en Excel",
             data=build_tabla_workbook(df_filtrado, meta, titulo_excel, nombre_hoja=key.capitalize()),
             file_name=f"{nombre_archivo} - {sufijo}.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -442,18 +449,18 @@ if vista == HOJAS[0]:
             "Saldo final = Saldo inicial + Total ingresos − Total salidas"
             + ("" if saldo_inicial_banco else " · escribe el saldo inicial en el panel izquierdo"))
     stat_cards([
-        {"label": "Saldo inicial", "value": f"{saldo_inicial_banco:,.2f}", "icon": "🗓️", "accent": GRIS,
+        {"label": "Saldo inicial", "value": f"{saldo_inicial_banco:,.2f}", "icon": icono("calendario"), "accent": GRIS,
          "sub": "saldo final del mes anterior",
          "tip": "Saldo con el que cerró el mes anterior («SALDO ANTERIOR» en el extracto). "
                 "Se escribe en el panel izquierdo y es el punto de partida del cálculo."},
-        {"label": "Total ingresos", "value": f"{total_ingresos:,.2f}", "icon": "📈", "accent": VERDE,
+        {"label": "Total ingresos", "value": f"{total_ingresos:,.2f}", "icon": icono("subida"), "accent": VERDE,
          "sub": f"{int((df_banco['valor'] > 0).sum()):,} movimiento(s)",
          "tip": "Suma de todos los movimientos positivos del extracto, sin importar el concepto."},
-        {"label": "Total salidas", "value": f"{total_salidas:,.2f}", "icon": "📉", "accent": ROJO,
+        {"label": "Total salidas", "value": f"{total_salidas:,.2f}", "icon": icono("bajada"), "accent": ROJO,
          "sub": f"{int((df_banco['valor'] < 0).sum()):,} movimiento(s)",
          "tip": "Suma de todos los movimientos negativos del extracto: nómina, manifiestos, "
                 "transferencias, proveedores, comisiones y cualquier otro cargo."},
-        {"label": "Saldo final", "value": f"{saldo_final:,.2f}", "icon": "💠", "accent": VERDE_OSC,
+        {"label": "Saldo final", "value": f"{saldo_final:,.2f}", "icon": icono("saldo"), "accent": VERDE_OSC,
          "sub": "calculado automáticamente",
          "tip": "Saldo inicial + Total ingresos − Total salidas. Debe coincidir con el "
                 "«SALDO ACTUAL» que reporta el extracto bancario."},
@@ -463,17 +470,17 @@ if vista == HOJAS[0]:
             "Su propio saldo inicial (no necesariamente igual al del banco) con los ingresos "
             "y salidas de la contabilidad")
     stat_cards([
-        {"label": "Saldo inicial", "value": f"{saldo_inicial_libro:,.2f}", "icon": "🗓️", "accent": GRIS,
+        {"label": "Saldo inicial", "value": f"{saldo_inicial_libro:,.2f}", "icon": icono("calendario"), "accent": GRIS,
          "sub": "arrastre de la contabilidad",
          "tip": "Saldo con el que el libro auxiliar traía la cuenta al empezar el mes. Se escribe "
                 "en el panel izquierdo, por separado del saldo inicial del banco."},
-        {"label": "Total ingresos", "value": f"{total_ingresos_libro:,.2f}", "icon": "📈", "accent": VERDE,
+        {"label": "Total ingresos", "value": f"{total_ingresos_libro:,.2f}", "icon": icono("subida"), "accent": VERDE,
          "sub": f"{int((df_libro['valor'] > 0).sum()):,} registro(s)",
          "tip": "Suma de los débitos del libro auxiliar (entran al banco)."},
-        {"label": "Total salidas", "value": f"{total_salidas_libro:,.2f}", "icon": "📉", "accent": ROJO,
+        {"label": "Total salidas", "value": f"{total_salidas_libro:,.2f}", "icon": icono("bajada"), "accent": ROJO,
          "sub": f"{int((df_libro['valor'] < 0).sum()):,} registro(s)",
          "tip": "Suma de los créditos del libro auxiliar (salen del banco)."},
-        {"label": "Saldo final", "value": f"{saldo_final_libro:,.2f}", "icon": "💠", "accent": VERDE_OSC,
+        {"label": "Saldo final", "value": f"{saldo_final_libro:,.2f}", "icon": icono("saldo"), "accent": VERDE_OSC,
          "sub": "según la contabilidad",
          "tip": "Saldo inicial + Total ingresos − Total salidas, esta vez con los valores del "
                 "libro auxiliar en vez de los del extracto."},
@@ -482,11 +489,11 @@ if vista == HOJAS[0]:
     section("Comparación banco vs. contabilidad",
             "Incluye el arrastre de saldos iniciales, no solo los movimientos de este mes")
     stat_cards([
-        {"label": "Saldo final banco", "value": f"{saldo_final:,.2f}", "icon": "🏦", "accent": VERDE_OSC},
-        {"label": "Saldo final contabilidad", "value": f"{saldo_final_libro:,.2f}", "icon": "📘",
+        {"label": "Saldo final banco", "value": f"{saldo_final:,.2f}", "icon": icono("banco"), "accent": VERDE_OSC},
+        {"label": "Saldo final contabilidad", "value": f"{saldo_final_libro:,.2f}", "icon": icono("libro"),
          "accent": VERDE_OSC},
         {"label": "Diferencia", "value": f"{diferencia_saldos:,.2f}",
-         "icon": ("✔️" if saldos_cuadran else "⚠️"), "accent": (VERDE if saldos_cuadran else ROJO),
+         "icon": (icono("check") if saldos_cuadran else icono("alerta")), "accent": (VERDE if saldos_cuadran else ROJO),
          "sub": ("Los dos saldos finales coinciden" if saldos_cuadran
                  else "No coinciden — revisa los saldos iniciales o lo pendiente")},
     ])
@@ -494,12 +501,12 @@ if vista == HOJAS[0]:
     if est.get("cerrado"):
         cerrado_en_fmt = _fmt_dt(est.get("cerrado_en"))
         st.success(
-            f"🔒 Esta conciliación quedó marcada como **terminada**"
+            f":material/lock: Esta conciliación quedó marcada como **terminada**"
             f"{f' el {cerrado_en_fmt}' if cerrado_en_fmt else ''} "
             f"— el saldo final del banco (${(est.get('saldo_final_banco') or 0):,.2f}) va a sugerirse como saldo "
             "inicial del próximo mes."
         )
-        if st.button("↺ Reabrir (seguir editando este mes)"):
+        if st.button(":material/lock_open: Reabrir (seguir editando este mes)"):
             st.session_state["estado"]["cerrado"] = False
             db.guardar_cambios(est["periodo"], st.session_state["estado"])
             st.rerun()
@@ -507,7 +514,7 @@ if vista == HOJAS[0]:
         st.info("Cuando termines de revisar todo lo pendiente de este mes, márcalo como terminado: "
                  "el saldo final queda guardado para sugerir el saldo inicial del mes siguiente, sin "
                  "que tengas que volver a escribirlo.")
-        if st.button("🔒 Marcar esta conciliación como terminada", type="primary"):
+        if st.button(":material/task_alt: Marcar esta conciliación como terminada", type="primary"):
             st.session_state["estado"]["cerrado"] = True
             st.session_state["estado"]["saldo_final_banco"] = saldo_final
             st.session_state["estado"]["saldo_final_libro"] = saldo_final_libro
@@ -519,23 +526,23 @@ if vista == HOJAS[0]:
     section("Resumen del cruce", f"{pct:.0f}% de los movimientos del banco quedaron conciliados"
                                  + (f" · {n_manuales} conciliación(es) manual(es)" if n_manuales else ""))
     stat_cards([
-        {"label": "Movimientos banco", "value": f"{len(df_banco):,}", "icon": "🏦", "accent": GRIS,
+        {"label": "Movimientos banco", "value": f"{len(df_banco):,}", "icon": icono("banco"), "accent": GRIS,
          "tip": "Total de movimientos del extracto bancario que cargaste."},
-        {"label": "Movimientos contabilidad", "value": f"{len(df_libro):,}", "icon": "📘", "accent": GRIS,
+        {"label": "Movimientos contabilidad", "value": f"{len(df_libro):,}", "icon": icono("libro"), "accent": GRIS,
          "tip": "Total de registros del libro auxiliar contable que cargaste."},
-        {"label": "Conciliados", "value": f"{n_conciliados:,}", "icon": "🔗", "accent": VERDE,
+        {"label": "Conciliados", "value": f"{n_conciliados:,}", "icon": icono("enlace"), "accent": VERDE,
          "sub": f"en {n_cruces} conciliación(es)",
          "tip": "Movimientos que cruzaron con la contabilidad por valor exacto, ya sea uno a uno "
                 "o sumando varios entre sí."},
-        {"label": "Posibles (dif. valor)", "value": f"{n_posibles:,}", "icon": "🔍", "accent": NARANJA,
+        {"label": "Posibles (dif. valor)", "value": f"{n_posibles:,}", "icon": icono("lupa"), "accent": NARANJA,
          "sub": "fecha y nombre coinciden",
          "tip": f"Coinciden en fecha y nombre, pero el valor difiere hasta ${margen_valor:,.0f}. "
                 "No están conciliados: hay que revisarlos a mano."},
-        {"label": "Solo en banco", "value": f"{len(df_solo_banco):,}", "icon": "📌", "accent": ROJO,
+        {"label": "Solo en banco", "value": f"{len(df_solo_banco):,}", "icon": icono("pendiente"), "accent": ROJO,
          "sub": "falta contabilizar",
          "tip": "Están en el extracto pero no tienen registro en la contabilidad. Posible partida "
                 "pendiente de contabilizar."},
-        {"label": "Solo en contabilidad", "value": f"{len(df_solo_libro):,}", "icon": "📌", "accent": ROJO,
+        {"label": "Solo en contabilidad", "value": f"{len(df_solo_libro):,}", "icon": icono("pendiente"), "accent": ROJO,
          "sub": "falta en el banco",
          "tip": "Están en la contabilidad pero no aparecen en el extracto. Partida pendiente en el "
                 "banco o error de digitación."},
@@ -544,8 +551,8 @@ if vista == HOJAS[0]:
     st.caption(
         f"**Control:** total banco {total_banco:,.2f} − total contabilidad {total_libro:,.2f} = "
         f"{diferencia:,.2f}, que "
-        + ("✔ cuadra con las partidas sin cruzar." if cuadra
-           else f"⚠ no cuadra (esperado {dif_esperada:,.2f}).")
+        + ("cuadra con las partidas sin cruzar." if cuadra
+           else f"NO cuadra (esperado {dif_esperada:,.2f}).")
     )
     if not cuadra:
         st.warning("La diferencia total no cuadra con las partidas sin cruzar. Revisa si hay valores "
@@ -559,7 +566,7 @@ elif vista == HOJAS[1]:
         # Se usa un interruptor y no un expander: el expander se vuelve a cerrar en cada
         # recarga y la recarga la dispara la propia selección de filas, dejando el panel
         # invisible justo cuando el usuario acaba de elegir qué deshacer.
-        if st.toggle("↩️  Deshacer conciliaciones (desconciliar)", key="ver_desconciliar"):
+        if st.toggle(":material/undo: Deshacer conciliaciones (desconciliar)", key="ver_desconciliar"):
             st.caption("Selecciona una o varias conciliaciones y deshazlas. Los movimientos "
                        "vuelven a sus listas de pendientes **sin perder ni modificar ningún dato**.")
             df_res = resumen_cruces(df_banco, df_libro, cruces)
@@ -583,7 +590,7 @@ elif vista == HOJAS[1]:
                            f"lo que devolverá **{n_mov} movimiento(s)** a pendientes.")
                 confirmar = st.checkbox("Confirmo que deseo deshacer estas conciliaciones",
                                          key=f"conf_desc_{st.session_state['gen']}")
-                if st.button("↩️  Desconciliar", type="primary", disabled=not confirmar,
+                if st.button(":material/undo: Desconciliar", type="primary", disabled=not confirmar,
                              key="btn_desconciliar"):
                     st.session_state["estado"]["cruces"] = eliminar_cruces(cruces, elegidos)
                     db.guardar_cambios(st.session_state["estado"]["periodo"], st.session_state["estado"])
@@ -698,11 +705,11 @@ else:
     col_izq, col_der = st.columns(2)
     with col_izq:
         ids_banco, total_sel_banco = panel(
-            df_solo_banco, "🏦 Pendientes en el banco", "banco",
+            df_solo_banco, ":material/account_balance: Pendientes en el banco", "banco",
             ["fecha", "valor", "tipo", "descripcion"], ["descripcion"])
     with col_der:
         ids_libro, total_sel_libro = panel(
-            df_solo_libro, "📘 Pendientes en contabilidad", "libro",
+            df_solo_libro, ":material/menu_book: Pendientes en contabilidad", "libro",
             ["fecha", "valor", "tipo", "descripcion", "comprobante"],
             ["descripcion", "comprobante", "documento"])
 
@@ -712,12 +719,12 @@ else:
     coinciden = hay_seleccion and abs(dif_sel) < 0.005
 
     stat_cards([
-        {"label": "Seleccionado en banco", "value": f"{total_sel_banco:,.2f}", "icon": "🏦",
+        {"label": "Seleccionado en banco", "value": f"{total_sel_banco:,.2f}", "icon": icono("banco"),
          "accent": VERDE_OSC, "sub": f"{len(ids_banco)} registro(s)"},
-        {"label": "Seleccionado en contabilidad", "value": f"{total_sel_libro:,.2f}", "icon": "📘",
+        {"label": "Seleccionado en contabilidad", "value": f"{total_sel_libro:,.2f}", "icon": icono("libro"),
          "accent": VERDE_OSC, "sub": f"{len(ids_libro)} registro(s)"},
         {"label": "Validación", "value": ("Coinciden" if coinciden else f"{abs(dif_sel):,.2f}"),
-         "icon": ("✔️" if coinciden else "⛔"), "accent": (VERDE if coinciden else ROJO),
+         "icon": (icono("check") if coinciden else icono("alerta")), "accent": (VERDE if coinciden else ROJO),
          "sub": ("Los valores coinciden" if coinciden
                  else ("Selecciona en ambos lados" if not hay_seleccion
                        else f"Diferencia de ${abs(dif_sel):,.2f}"))},
@@ -735,7 +742,7 @@ else:
 
     col_b1, _ = st.columns([1, 3])
     with col_b1:
-        if st.button("⚖️  Cruzar", type="primary", disabled=not coinciden,
+        if st.button(":material/compare_arrows: Cruzar", type="primary", disabled=not coinciden,
                      use_container_width=True, key="btn_cruzar"):
             nuevos, nuevo_id = crear_cruce_manual(cruces, ids_banco, ids_libro)
             st.session_state["estado"]["cruces"] = nuevos

@@ -7,6 +7,7 @@ sutil (motivo "circuito") que aporta el aire tecnológico sin restarle sobriedad
 import base64
 import hmac
 import os
+import re
 
 import pandas as pd
 import streamlit as st
@@ -48,6 +49,88 @@ def _logo_b64():
         return None
     with open(LOGO_PATH, "rb") as f:
         return base64.b64encode(f.read()).decode("ascii")
+
+
+# ---------------------------------------------------------------------------
+# Iconografía
+#
+# Iconos de trazo (no emoji) dibujados en SVG en línea: los emoji los pinta el
+# sistema operativo, así que cambian de estilo entre Windows/Mac/móvil y se ven
+# como caritas de colores dentro de un informe contable. Estos son de un solo
+# trazo, heredan el color del texto (`currentColor`) y se ven idénticos en
+# cualquier equipo — el mismo lenguaje visual de un software financiero serio.
+#
+# En las pestañas de navegación no se pueden usar (Streamlit solo acepta texto
+# ahí): esas van con iconos Material, `:material/nombre:`, que Streamlit
+# reconoce en las etiquetas y renderiza con la misma sobriedad.
+# ---------------------------------------------------------------------------
+# Cada icono es un par (relleno, trazo): una silueta rellena muy tenue por debajo y el
+# contorno nítido encima. Ese contraste suave/nítido es lo que le da el aire "duotono"
+# y hace que se lean al instante incluso a 20px, sin recurrir a emoji.
+_ICONOS = {
+    "banco": ("<path d='M12 3.2 3.4 8h17.2L12 3.2Z'/><path d='M5 8h14v12.5H5z'/>",
+              "<path d='M2.6 20.5h18.8M5 20.5V8M19 20.5V8M12 3.2 3.4 8h17.2L12 3.2Z'/>"
+              "<path d='M8.5 17v-5M12 17v-5M15.5 17v-5'/>"),
+    "documento": ("<path d='M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8l-5-5Z'/>",
+                   "<path d='M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8l-5-5Z'/>"
+                   "<path d='M14 3v5h5M9 13.5h6M9 17h4'/>"),
+    "inicio": ("<path d='M5.6 9.6 12 4.4l6.4 5.2V19a1.4 1.4 0 0 1-1.4 1.4H7A1.4 1.4 0 0 1 5.6 19V9.6Z'/>",
+                "<path d='M3 10.6 12 3.5l9 7.1'/>"
+                "<path d='M5.6 9.5V19a1.4 1.4 0 0 0 1.4 1.4h10a1.4 1.4 0 0 0 1.4-1.4V9.5'/>"),
+    "calendario": ("<rect x='3.6' y='6' width='16.8' height='14.4' rx='2'/>",
+                    "<rect x='3.6' y='6' width='16.8' height='14.4' rx='2'/>"
+                    "<path d='M3.6 10.5h16.8M8 3.6v4.2M16 3.6v4.2'/>"),
+    "subida": ("<circle cx='12' cy='12' r='8.6'/>",
+                "<circle cx='12' cy='12' r='8.6'/><path d='M12 16.4V7.8M8.4 11.4 12 7.8l3.6 3.6'/>"),
+    "bajada": ("<circle cx='12' cy='12' r='8.6'/>",
+                "<circle cx='12' cy='12' r='8.6'/><path d='M12 7.6v8.6M8.4 12.6 12 16.2l3.6-3.6'/>"),
+    "saldo": ("<rect x='3' y='6.4' width='18' height='12.2' rx='2.4'/>",
+               "<rect x='3' y='6.4' width='18' height='12.2' rx='2.4'/>"
+               "<path d='M3 10.6h18'/><circle cx='16.6' cy='14.8' r='1.15'/>"),
+    "enlace": ("<circle cx='12' cy='12' r='8.6'/>",
+                "<path d='M10.2 13.4a3.6 3.6 0 0 0 5.4.4l1.6-1.6a3.6 3.6 0 0 0-5.1-5.1l-.9.9'/>"
+                "<path d='M13.8 10.6a3.6 3.6 0 0 0-5.4-.4l-1.6 1.6a3.6 3.6 0 0 0 5.1 5.1l.9-.9'/>"),
+    "lupa": ("<circle cx='10.8' cy='10.8' r='6.6'/>",
+              "<circle cx='10.8' cy='10.8' r='6.6'/><path d='m19.6 19.6-4-4'/>"),
+    "libro": ("<path d='M5 5.4A2.4 2.4 0 0 1 7.4 3H19v15.4H7.4A2.4 2.4 0 0 0 5 20.8V5.4Z'/>",
+               "<path d='M5 5.4A2.4 2.4 0 0 1 7.4 3H19v15.4H7.4A2.4 2.4 0 0 0 5 20.8V5.4Z'/>"
+               "<path d='M9 7.6h6M9 11.4h6'/>"),
+    "balanza": ("<path d='M4.6 7.4 2 14h5.2L4.6 7.4Zm14.8 0L16.8 14H22l-2.6-6.6Z'/>",
+                 "<path d='M12 4.2v16.2M8 20.4h8M4.6 7.4h14.8M12 4.2 4.6 7.4M12 4.2l7.4 3.2'/>"
+                 "<path d='M4.6 7.4 2 14h5.2L4.6 7.4Zm14.8 0L16.8 14H22l-2.6-6.6Z'/>"),
+    "check": ("<circle cx='12' cy='12' r='8.6'/>",
+               "<circle cx='12' cy='12' r='8.6'/><path d='m8.4 12.2 2.5 2.5 4.7-5.2'/>"),
+    "alerta": ("<path d='M10.3 4.5 2.7 17.9a2 2 0 0 0 1.7 3h15.2a2 2 0 0 0 1.7-3L13.7 4.5a2 2 0 0 0-3.4 0Z'/>",
+                "<path d='M10.3 4.5 2.7 17.9a2 2 0 0 0 1.7 3h15.2a2 2 0 0 0 1.7-3L13.7 4.5a2 2 0 0 0-3.4 0Z'/>"
+                "<path d='M12 9.4v4.4M12 17.4v.1'/>"),
+    "pendiente": ("<circle cx='12' cy='12' r='8.6'/>",
+                   "<circle cx='12' cy='12' r='8.6'/><path d='M12 7.4v5l3.2 1.9'/>"),
+    "editar": ("<path d='M4.4 19.6h3.9L19.2 8.7a2 2 0 0 0-2.8-2.8L5.5 16.8l-1.1 2.8Z'/>",
+                "<path d='M4.4 19.6h3.9L19.2 8.7a2 2 0 0 0-2.8-2.8L5.5 16.8l-1.1 2.8Z'/>"
+                "<path d='m14.9 7.4 2.8 2.8'/>"),
+    "nota": ("<path d='M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8l-5-5Z'/>",
+              "<path d='M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8l-5-5Z'/>"
+              "<path d='M14 3v5h5M9 14.6h6'/>"),
+    "capas": ("<path d='m12 3.2 8.6 4.6L12 12.4 3.4 7.8 12 3.2Z'/>",
+               "<path d='m12 3.2 8.6 4.6L12 12.4 3.4 7.8 12 3.2Z'/><path d='m3.4 12.6 8.6 4.6 8.6-4.6'/>"),
+    "pila": ("<rect x='3.4' y='4' width='17.2' height='6' rx='1.8'/>",
+              "<rect x='3.4' y='4' width='17.2' height='6' rx='1.8'/>"
+              "<rect x='3.4' y='14' width='17.2' height='6' rx='1.8'/>"),
+}
+
+
+def icono(nombre, tam=20, grosor=1.7, opacidad_relleno=0.16):
+    """Icono duotono en SVG en línea: silueta rellena tenue + contorno nítido encima.
+
+    Ambas capas usan `currentColor`, así que el icono toma el color del texto o de la
+    tarjeta donde se ponga (dorado sobre el azul del menú, el color del indicador en las
+    tarjetas de cifras) sin tener que pasarle el color aquí."""
+    relleno, trazo = _ICONOS.get(nombre, ("", ""))
+    return (f"<svg viewBox='0 0 24 24' width='{tam}' height='{tam}' class='istho-ico' "
+            f"aria-hidden='true'>"
+            f"<g fill='currentColor' fill-opacity='{opacidad_relleno}' stroke='none'>{relleno}</g>"
+            f"<g fill='none' stroke='currentColor' stroke-width='{grosor}' "
+            f"stroke-linecap='round' stroke-linejoin='round'>{trazo}</g></svg>")
 
 
 # Patrón de líneas + nodos (motivo "circuito") como SVG en línea, muy tenue.
@@ -97,17 +180,33 @@ def inject_css():
        existe en la página (ni el elemento está en el DOM), así que no hay que depender de
        él — este botón vive en el panel mismo (para ocultarlo) y, cuando está oculto, flota
        fijo en la esquina para poder traerlo de vuelta sin importar dónde se haya scrolleado. */
-    div[class*="st-key-panel_ocultar"] button,
+    /* Dentro del panel el botón va discreto (es una acción secundaria, no debe competir
+       con "Conciliar"/"Cruzar"); el de recuperar el panel sí va dorado y llamativo, porque
+       cuando aparece es lo único visible en pantalla y hay que encontrarlo rápido. */
+    div[class*="st-key-panel_ocultar"] button {{
+        background: rgba(255,255,255,0.06) !important;
+        border: 1px solid rgba(255,255,255,0.14) !important;
+        color: rgba(226,236,255,0.72) !important; border-radius: 9px !important;
+        font-size: 0.74rem !important; font-weight: 600 !important;
+        padding: 0.3rem 0.6rem !important; min-height: 0 !important;
+        transition: background .13s ease, color .13s ease;
+    }}
+    div[class*="st-key-panel_ocultar"] button p {{
+        color: rgba(226,236,255,0.72) !important; font-weight: 600 !important; font-size: 0.74rem !important;
+    }}
+    div[class*="st-key-panel_ocultar"] button:hover {{
+        background: rgba(255,255,255,0.11) !important;
+    }}
+    div[class*="st-key-panel_ocultar"] button:hover p {{ color: #fff !important; }}
+
     div[class*="st-key-panel_mostrar"] button {{
         background: linear-gradient(135deg, {ORO_OSCURO} 0%, {ORO} 55%, {ORO_CLARO} 100%) !important;
         color: #0E1B33 !important; border: none !important; border-radius: 10px !important;
-        font-weight: 800 !important; font-size: 0.82rem !important;
+        font-weight: 800 !important; font-size: 0.8rem !important;
         box-shadow: 0 8px 20px rgba(212,175,55,0.38);
         transition: transform .13s ease, filter .13s ease;
     }}
-    div[class*="st-key-panel_ocultar"] button p,
     div[class*="st-key-panel_mostrar"] button p {{ color: #0E1B33 !important; font-weight: 800 !important; }}
-    div[class*="st-key-panel_ocultar"] button:hover,
     div[class*="st-key-panel_mostrar"] button:hover {{ filter: brightness(1.08); transform: translateY(-1px); }}
     div[class*="st-key-panel_mostrar"] {{
         position: fixed !important; top: 0.85rem; left: 0.85rem; z-index: 999999;
@@ -304,9 +403,9 @@ def inject_css():
        navegación normal (href="/") y no dependa de ningún widget del sidebar. */
     .istho-hero-inicio {{
         position: relative; z-index: 1; flex-shrink: 0; margin-left: 0.9rem;
-        width: 40px; height: 40px; border-radius: 11px; display: flex;
-        align-items: center; justify-content: center; font-size: 1.15rem;
-        text-decoration: none; cursor: pointer;
+        width: 38px; height: 38px; border-radius: 11px; display: flex;
+        align-items: center; justify-content: center;
+        text-decoration: none; cursor: pointer; color: #0E1B33;
         background: linear-gradient(135deg, {ORO_OSCURO} 0%, {ORO} 55%, {ORO_CLARO} 100%);
         box-shadow: 0 6px 16px rgba(212,175,55,0.35);
         transition: transform .13s ease, box-shadow .13s ease, filter .13s ease;
@@ -316,8 +415,9 @@ def inject_css():
         box-shadow: 0 9px 20px rgba(212,175,55,0.45);
     }}
     .istho-hero.compacto .istho-hero-inicio {{
-        width: 30px; height: 30px; font-size: 0.92rem; border-radius: 9px; margin-left: 0.6rem;
+        width: 30px; height: 30px; border-radius: 9px; margin-left: 0.6rem;
     }}
+    .istho-hero.compacto .istho-hero-inicio svg {{ width: 16px; height: 16px; }}
 
     /* ==================== SECCIONES ==================== */
     .istho-section {{
@@ -330,15 +430,13 @@ def inject_css():
     .istho-section em {{ font-style: normal; font-size: 0.78rem; color: #8A9791; }}
 
     /* ==================== TARJETAS DE INDICADORES ==================== */
+    /* `auto-fit` y no un número fijo de columnas: antes eran siempre 6, así que una fila
+       de 4 indicadores ocupaba solo 4/6 del ancho y cada tarjeta quedaba tan angosta que
+       una cifra grande ($688,402,632) se partía a la mitad. Así cada fila reparte todo el
+       ancho disponible entre las tarjetas que tenga, sean 3, 4 o 6. */
     .istho-stats {{
-        display: grid; grid-template-columns: repeat(6, minmax(0, 1fr));
+        display: grid; grid-template-columns: repeat(auto-fit, minmax(168px, 1fr));
         gap: 0.6rem; margin-bottom: 0.3rem;
-    }}
-    @media (max-width: 1350px) {{
-        .istho-stats {{ grid-template-columns: repeat(3, minmax(0, 1fr)); }}
-    }}
-    @media (max-width: 900px) {{
-        .istho-stats {{ grid-template-columns: repeat(2, minmax(0, 1fr)); }}
     }}
     @media (max-width: 560px) {{
         .istho-stats {{ grid-template-columns: 1fr; }}
@@ -357,11 +455,15 @@ def inject_css():
     .istho-card-top {{
         display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.35rem;
     }}
+    /* El icono duotono hereda `color`, así que se pinta del mismo color del indicador
+       (verde conciliado, rojo pendiente...) sin tener que pasárselo desde Python. */
     .istho-chip {{
         display: inline-flex; align-items: center; justify-content: center;
-        width: 22px; height: 22px; border-radius: 7px; font-size: 0.72rem; flex-shrink: 0;
-        background: color-mix(in srgb, var(--accent) 14%, transparent);
+        width: 24px; height: 24px; border-radius: 7px; flex-shrink: 0; line-height: 0;
+        color: var(--accent, {VERDE});
+        background: color-mix(in srgb, var(--accent) 13%, transparent);
     }}
+    .istho-chip svg {{ width: 15px; height: 15px; }}
     .istho-card .istho-label {{
         font-size: 0.64rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em;
         color: #7A8A82; line-height: 1.2;
@@ -632,7 +734,7 @@ def panel_toggle():
         st.markdown("<style>section[data-testid='stSidebar']{display:none !important;}</style>",
                     unsafe_allow_html=True)
         with st.container(key="panel_mostrar"):
-            if st.button("▶  Mostrar panel", key="btn_panel_mostrar"):
+            if st.button(":material/dock_to_right: Mostrar panel", key="btn_panel_mostrar"):
                 st.session_state["panel_oculto"] = False
                 st.rerun()
     else:
@@ -652,7 +754,7 @@ def panel_toggle():
         </style>
         """), unsafe_allow_html=True)
         with st.sidebar.container(key="panel_ocultar"):
-            if st.button("◀  Ocultar panel", key="btn_panel_ocultar", use_container_width=True):
+            if st.button(":material/dock_to_left: Ocultar panel", key="btn_panel_ocultar"):
                 st.session_state["panel_oculto"] = True
                 st.rerun()
 
@@ -674,7 +776,8 @@ def hero(title, subtitle, empresa=None, periodo=None, compacto=False, inicio=Tru
         </div>
         """)
     inicio_html = (_flat('<a href="/" target="_self" class="istho-hero-inicio" '
-                         'title="Volver al menú principal">🏠</a>') if inicio else "")
+                         'title="Volver al menú principal">' + icono("inicio", 19, grosor=1.8)
+                         + '</a>') if inicio else "")
     clase = "istho-hero compacto" if compacto else "istho-hero"
     st.markdown(_flat(f"""
     <div class="{clase}">
@@ -689,8 +792,15 @@ def hero(title, subtitle, empresa=None, periodo=None, compacto=False, inicio=Tru
     """), unsafe_allow_html=True)
 
 
+_NEGRITA_MD = re.compile(r"\*\*(.+?)\*\*")
+
+
 def section(titulo, nota=None):
-    nota_html = f"<em>{nota}</em>" if nota else ""
+    nota_html = ""
+    if nota:
+        # La nota se inserta como HTML, así que el markdown no se procesa solo y un
+        # `**texto**` aparecía con los asteriscos a la vista. Se traduce a <b> a mano.
+        nota_html = "<em>" + _NEGRITA_MD.sub(r"<b>\1</b>", nota) + "</em>"
     st.markdown(_flat(f"""
     <div class="istho-section"><h4>{titulo}</h4>{nota_html}</div>
     """), unsafe_allow_html=True)
@@ -714,7 +824,8 @@ def stat_cards(items):
 
 
 def badge(texto):
-    st.markdown(f'<div class="istho-badge">🔎 {texto}</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="istho-badge">{icono("lupa", 14, grosor=1.9)}<span>{texto}</span></div>',
+                unsafe_allow_html=True)
 
 
 def loader(mensaje, detalle=""):
@@ -1092,9 +1203,12 @@ def menu_css():
         display: flex;
         flex-direction: column;
     }}
-    /* El botón siempre al fondo de la tarjeta, sin importar si la descripción de al
-       lado ocupa una línea más o menos — así los dos botones quedan alineados. */
-    div[class*="st-key-menu_card_"] div[data-testid="stButton"] {{ margin-top: auto; }}
+    /* El botón siempre al fondo de la tarjeta, sin importar si la descripción de al lado
+       ocupa una línea más o menos — así los dos botones quedan alineados entre sí.
+       OJO: el hijo directo del flex es el "stElementContainer" que envuelve al botón, no
+       el stButton — poniéndole el margin-top al stButton (como estaba antes) no hacía
+       nada, porque no es hijo del contenedor flex. */
+    div[class*="st-key-menu_card_"] div[class*="st-key-menu_btn_"] {{ margin-top: auto; }}
     div[class*="st-key-menu_card_"]:hover {{
         transform: translateY(-4px);
         border-color: rgba(212,175,55,0.62) !important;
@@ -1105,11 +1219,11 @@ def menu_css():
         background: linear-gradient(90deg, transparent, {ORO}, {ORO_CLARO}, {ORO}, transparent);
         border-radius: 2px;
     }}
+    /* El icono duotono va suelto (sin placa de fondo): a este tamaño el propio relleno
+       tenue le da cuerpo, y así respira mejor dentro de la tarjeta. */
     .istho-menu-icon {{
-        width: 58px; height: 58px; border-radius: 16px; display: flex;
-        align-items: center; justify-content: center; font-size: 1.7rem;
-        background: linear-gradient(135deg, rgba(212,175,55,0.22), rgba(212,175,55,0.06));
-        border: 1px solid rgba(212,175,55,0.34); margin-bottom: 1.1rem;
+        color: {ORO_CLARO}; margin-bottom: 1.15rem; line-height: 0;
+        filter: drop-shadow(0 4px 12px rgba(212,175,55,0.28));
     }}
     div[class*="st-key-menu_card_"] h3 {{
         color: #FFFFFF !important; font-family: 'Sora', sans-serif;

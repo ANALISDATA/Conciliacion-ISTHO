@@ -11,8 +11,9 @@ from conciliacion_dian import (buscar_causacion, construir_vistas_dian, crear_cr
                                 vista_duplicados)
 from config import CLAVE_ACCESO
 from excel_export import EMPRESA, LOGO_PATH, NIT, build_tabla_workbook, periodo_desde_fechas
-from ui import (AZUL, GRIS, NARANJA, ROJO, VERDE, acceso_permitido, badge, hero, inject_css,
-                 loader, panel_toggle, section, sidebar_brand, sidebar_step, stat_cards, tabla)
+from ui import (AZUL, GRIS, NARANJA, ROJO, VERDE, acceso_permitido, badge, hero, icono,
+                 inject_css, loader, panel_toggle, section, sidebar_brand, sidebar_step,
+                 stat_cards, tabla)
 
 st.set_page_config(page_title="Cruce DIAN", layout="wide",
                    page_icon=LOGO_PATH if os.path.exists(LOGO_PATH) else "📄")
@@ -39,7 +40,7 @@ if not acceso_permitido(CLAVE_ACCESO, EMPRESA, "Sistema de Conciliaciones ISTHO"
 # ---------------------------------------------------------------- Sidebar --
 panel_toggle()
 sidebar_brand("ISTHO S.A.S.", "Cruce DIAN")
-st.sidebar.page_link("app.py", label="← Volver al menú", icon="🏠")
+st.sidebar.page_link("app.py", label="Volver al menú", icon=":material/home:")
 st.sidebar.divider()
 
 sidebar_step(1, "Archivos")
@@ -59,14 +60,14 @@ if st.session_state["estado_dian"] is None and db.disponible():
     periodos = db.listar_periodos()
     if periodos:
         st.sidebar.divider()
-        st.sidebar.caption("☁️ Hay cruces guardados")
+        st.sidebar.caption(":material/cloud: Hay cruces guardados")
         opciones = {f"{p['periodo']} — actualizado {_fmt_dt(p['actualizado_en'])}": p["periodo"]
                     for p in periodos}
         etiqueta = st.sidebar.selectbox(
             "Retomar cruce guardado", list(opciones.keys()),
             index=None, placeholder="Elige un período…", key="periodo_dian_a_retomar")
         elegido = opciones.get(etiqueta)
-        if elegido and st.sidebar.button("↻ Retomar", use_container_width=True, key="btn_retomar_dian"):
+        if elegido and st.sidebar.button(":material/restore: Retomar", use_container_width=True, key="btn_retomar_dian"):
             st.session_state["estado_dian"] = db.cargar_estado(elegido)
             st.session_state["gen_dian"] += 1
             st.rerun()
@@ -171,7 +172,7 @@ def barra_resultado(df_filtrado, df_total, titulo_excel, nombre_archivo, key):
         badge(f"Mostrando {len(df_filtrado):,} de {len(df_total):,} registro(s)")
     with col_b:
         st.download_button(
-            "⬇  Descargar esta tabla en Excel",
+            ":material/download: Descargar esta tabla en Excel",
             data=build_tabla_workbook(df_filtrado, meta, titulo_excel, nombre_hoja=key.capitalize()[:31]),
             file_name=f"{nombre_archivo} - {sufijo}.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -180,8 +181,16 @@ def barra_resultado(df_filtrado, df_total, titulo_excel, nombre_archivo, key):
 
 
 # --------------------------------------------------------------- Barra superior --
-HOJAS = ["📊 Resumen", "🔗 Cruzados", "🟠 Requiere revisión", "⬜ Notas de crédito",
-         "⚠️ Duplicados Avansant", "🔴 Pendientes DIAN", "✍️ Cruce manual"]
+# Iconos Material (`:material/nombre:`), no emoji: Streamlit los reconoce en las etiquetas
+# y los pinta con el mismo trazo sobrio en cualquier equipo, mientras que los emoji los
+# dibuja el sistema operativo y cambian de estilo entre Windows, Mac y móvil.
+HOJAS = [":material/donut_small: Resumen",
+         ":material/link: Cruzados",
+         ":material/rule: Requiere revisión",
+         ":material/note_stack: Notas de crédito",
+         ":material/content_copy: Duplicados Avansant",
+         ":material/pending_actions: Pendientes DIAN",
+         ":material/edit_note: Cruce manual"]
 vista = st.session_state.get("hoja_activa_dian") or HOJAS[0]
 
 hero("Cruce DIAN", "DIAN (base) cruzado contra las causaciones de Avansant",
@@ -206,7 +215,7 @@ if st.session_state.get("aviso_dian"):
     st.success(st.session_state.pop("aviso_dian"))
 
 if st.session_state.get("_dian_guardado_fallo"):
-    st.warning("⚠️ Este cruce no se pudo guardar en la nube (probablemente falta crear la "
+    st.warning(":material/warning: Este cruce no se pudo guardar en la nube (probablemente falta crear la "
               "tabla `conciliaciones_dian` en Supabase). El cruce en pantalla funciona "
               "normal, pero no vas a poder retomarlo si cierras la app.")
 
@@ -220,24 +229,25 @@ if vista == HOJAS[0]:
     st.write("")
     section("Cifras generales")
     stat_cards([
-        {"label": "Valor total DIAN", "value": f"${total_dian:,.0f}", "icon": "📄", "accent": AZUL,
-         "sub": f"{len(df_dian):,} documento(s)"},
-        {"label": "Valor total Avansant", "value": f"${total_avansat:,.0f}", "icon": "🧾", "accent": AZUL,
-         "sub": f"{n_avansat:,} causación(es)"},
-        {"label": "Líneas DIAN", "value": f"{n_dian_relevante:,}", "icon": "📥", "accent": GRIS,
-         "sub": f"+ {int(df_dian['es_nota_credito'].sum())} nota(s) de crédito aparte"},
-        {"label": "Líneas Avansant", "value": f"{n_avansat:,}", "icon": "📥", "accent": GRIS,
-         "sub": "causaciones (Tipo = CAUSACION)"},
+        {"label": "Valor total DIAN", "value": f"${total_dian:,.0f}", "icon": icono("documento"),
+         "accent": AZUL, "sub": f"{len(df_dian):,} documento(s)"},
+        {"label": "Valor total Avansant", "value": f"${total_avansat:,.0f}", "icon": icono("libro"),
+         "accent": AZUL, "sub": f"{n_avansat:,} causación(es)"},
+        {"label": "Líneas DIAN", "value": f"{n_dian_relevante:,}", "icon": icono("capas"),
+         "accent": GRIS, "sub": f"+ {int(df_dian['es_nota_credito'].sum())} nota(s) de crédito aparte"},
+        {"label": "Líneas Avansant", "value": f"{n_avansat:,}", "icon": icono("pila"),
+         "accent": GRIS, "sub": "causaciones (Tipo = CAUSACION)"},
     ])
     st.write("")
     stat_cards([
-        {"label": "Cruzadas", "value": f"{n_cruzados:,}", "icon": "✔️", "accent": VERDE,
+        {"label": "Cruzadas", "value": f"{n_cruzados:,}", "icon": icono("check"), "accent": VERDE,
          "sub": f"{n_cruzados/n_dian_relevante*100:.1f}%" if n_dian_relevante else "—"},
-        {"label": "Requiere revisión", "value": f"{n_ambiguos:,}", "icon": "🟠", "accent": NARANJA,
-         "sub": "más de una causación posible"},
-        {"label": "Pendientes (DIAN sin Avansant)", "value": f"{n_pendientes:,}", "icon": "🔴",
-         "accent": ROJO, "sub": "es lo que buscabas: facturas sin digitar"},
-        {"label": "Duplicados en Avansant", "value": f"{len(duplicados):,}", "icon": "⚠️",
+        {"label": "Requiere revisión", "value": f"{n_ambiguos:,}", "icon": icono("lupa"),
+         "accent": NARANJA, "sub": "más de una causación posible"},
+        {"label": "Pendientes (DIAN sin Avansant)", "value": f"{n_pendientes:,}",
+         "icon": icono("pendiente"), "accent": ROJO,
+         "sub": "es lo que buscabas: facturas sin digitar"},
+        {"label": "Duplicados en Avansant", "value": f"{len(duplicados):,}", "icon": icono("alerta"),
          "accent": NARANJA, "sub": "misma referencia, distinto NIT"},
     ])
 
@@ -247,10 +257,14 @@ if vista == HOJAS[0]:
         niveles[c["nivel"]] = niveles.get(c["nivel"], 0) + 1
     section("Cómo cruzaron los que cruzaron")
     stat_cards([
-        {"label": "🟢 Alta (texto exacto)", "value": f"{niveles.get('Alta', 0):,}", "accent": VERDE},
-        {"label": "🟡 Media (NIT + valor)", "value": f"{niveles.get('Media', 0):,}", "accent": AZUL},
-        {"label": "🔵 Baja (NIT + folio)", "value": f"{niveles.get('Baja', 0):,}", "accent": GRIS},
-        {"label": "✍️ Manual", "value": f"{niveles.get('Manual', 0):,}", "accent": AZUL},
+        {"label": "Alta · texto exacto", "value": f"{niveles.get('Alta', 0):,}",
+         "icon": icono("check"), "accent": VERDE},
+        {"label": "Media · NIT + valor", "value": f"{niveles.get('Media', 0):,}",
+         "icon": icono("saldo"), "accent": AZUL},
+        {"label": "Baja · NIT + folio", "value": f"{niveles.get('Baja', 0):,}",
+         "icon": icono("documento"), "accent": GRIS},
+        {"label": "Manual", "value": f"{niveles.get('Manual', 0):,}",
+         "icon": icono("editar"), "accent": AZUL},
     ])
 
 # ==================================================== HOJA 2 · CRUZADOS ==
@@ -258,7 +272,7 @@ elif vista == HOJAS[1]:
     if df_cruz.empty:
         st.info("Todavía no hay documentos cruzados.")
     else:
-        if st.toggle("↩️  Deshacer cruces", key="ver_deshacer_dian"):
+        if st.toggle(":material/undo: Deshacer cruces", key="ver_deshacer_dian"):
             st.caption("Selecciona uno o varios cruces y deshazlos. Los documentos vuelven "
                       "a pendientes sin perder ni modificar ningún dato.")
             ev = st.dataframe(
@@ -272,7 +286,7 @@ elif vista == HOJAS[1]:
             )
             elegidos = [df_cruz.iloc[i]["ID"] for i in ev.selection.rows]
             if elegidos:
-                if st.button(f"↩️  Deshacer {len(elegidos)} cruce(s)", type="primary",
+                if st.button(f":material/undo: Deshacer {len(elegidos)} cruce(s)", type="primary",
                             key="btn_deshacer_dian"):
                     st.session_state["estado_dian"]["cruces"] = eliminar_cruces_dian(cruces, elegidos)
                     db.guardar_cambios(periodo, st.session_state["estado_dian"])
@@ -404,7 +418,7 @@ else:
                                f"**Detalle:** {fila_causacion['detalle']}  \n"
                                f"**Fecha contable:** {fila_causacion['fecha_contable']}")
 
-                    if st.button("✔️  Confirmar cruce", type="primary", key=f"confirmar_{did}"):
+                    if st.button(":material/check_circle: Confirmar cruce", type="primary", key=f"confirmar_{did}"):
                         nuevos_cruces, nuevo_id = crear_cruce_manual_dian(
                             cruces, did, int(fila_causacion["id"]), df_avansat)
                         st.session_state["estado_dian"]["cruces"] = nuevos_cruces
