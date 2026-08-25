@@ -18,7 +18,7 @@ st.set_page_config(page_title="Financiera ISTHO", layout="wide",
 
 inject_css()
 
-if not acceso_permitido(CLAVE_ACCESO, EMPRESA, "Financiera ISTHO",
+if not acceso_permitido(CLAVE_ACCESO, EMPRESA, "Sistema de Conciliaciones ISTHO",
                         "Elige el proceso que necesitas"):
     st.stop()
 

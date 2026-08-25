@@ -47,11 +47,11 @@ def acceso_permitido():
     _, centro, _ = st.columns([1, 1.45, 1])
     with centro:
         with st.container(key="login_card"):
-            # El título dice "Financiera ISTHO" y no "Conciliación Bancaria" a propósito:
-            # esta clave abre las DOS apps (queda en session_state, compartido entre
-            # páginas), así que si alguien entra por acá primero, el título no debe sonar
-            # como si fuera solo para este proceso.
-            login_encabezado("Financiera ISTHO", "Elige el proceso que necesitas")
+            # El título dice "Sistema de Conciliaciones ISTHO" y no "Conciliación
+            # Bancaria" a propósito: esta clave abre las DOS apps (queda en
+            # session_state, compartido entre páginas), así que si alguien entra por acá
+            # primero, el título no debe sonar como si fuera solo para este proceso.
+            login_encabezado("Sistema de Conciliaciones ISTHO", "Elige el proceso que necesitas")
             with st.form("acceso", border=False):
                 clave = st.text_input("Clave de acceso", type="password",
                                       placeholder="Ingresa tu clave")

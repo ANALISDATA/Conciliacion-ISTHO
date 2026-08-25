@@ -32,7 +32,7 @@ def _fmt_dt(iso):
 # Mismo título genérico que en Cruce Bancario y en el menú: esta clave abre las dos apps
 # (queda en session_state, compartido entre páginas), así que si alguien entra por acá
 # primero, el título no debe sonar como si fuera solo para el cruce DIAN.
-if not acceso_permitido(CLAVE_ACCESO, EMPRESA, "Financiera ISTHO",
+if not acceso_permitido(CLAVE_ACCESO, EMPRESA, "Sistema de Conciliaciones ISTHO",
                         "Elige el proceso que necesitas"):
     st.stop()
 
