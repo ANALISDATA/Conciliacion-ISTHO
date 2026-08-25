@@ -140,8 +140,11 @@ def _ajustar_anchos(worksheet, anchos):
 # --------------------------------------------------------------------------------
 # Exportación genérica: convierte cualquier tabla de la app en un Excel con membrete
 # --------------------------------------------------------------------------------
-_COLS_FECHA = {"fecha", "fecha banco", "fecha contabilidad"}
-_COLS_MONEDA = {"valor", "valor banco", "valor contabilidad", "diferencia"}
+_COLS_FECHA = {"fecha", "fecha banco", "fecha contabilidad",
+               # Cruce DIAN (ver conciliacion_dian.py) — agregado aparte para no tocar el
+               # formato de ninguna columna que ya usa BANCARIO.
+               "fecha emisión", "fecha contable"}
+_COLS_MONEDA = {"valor", "valor banco", "valor contabilidad", "diferencia", "total"}
 _COLS_ENTERO = {"dif. días"}
 
 _ANCHOS_EXCEL = {
@@ -152,6 +155,10 @@ _ANCHOS_EXCEL = {
     "comprobante": 13, "documento": 15,
     "descripción banco": 32, "descripción contabilidad": 42, "descripción": 46,
     "confianza": 34,
+    # Cruce DIAN:
+    "nivel": 10, "fecha emisión": 13, "comprobante dian": 16, "nit": 13,
+    "emisor": 32, "total": 16, "causación": 12, "referencia avansant": 18,
+    "tercero avansant": 28, "fecha contable": 14, "cruzado el": 18, "candidatos": 60,
 }
 
 

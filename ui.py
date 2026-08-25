@@ -5,6 +5,7 @@ Paleta corporativa en azul rey sobre azul profundo, con un patrón de líneas y 
 sutil (motivo "circuito") que aporta el aire tecnológico sin restarle sobriedad.
 """
 import base64
+import hmac
 import os
 
 import pandas as pd
@@ -646,8 +647,12 @@ def loader(mensaje, detalle=""):
     """)
 
 
-_COLS_FECHA = {"fecha", "fecha banco", "fecha contabilidad"}
-_COLS_MONEDA = {"valor", "valor banco", "valor contabilidad", "diferencia"}
+_COLS_FECHA = {"fecha", "fecha banco", "fecha contabilidad",
+               # Cruce DIAN (ver conciliacion_dian.py) — nombres propios, agregados aparte
+               # para no tocar el formato de ninguna columna que ya usa BANCARIO.
+               "fecha emisión", "fecha contable"}
+_COLS_MONEDA = {"valor", "valor banco", "valor contabilidad", "diferencia",
+                "total"}  # "total" es de DIAN
 
 
 # Anchos en píxeles. Las descripciones y los valores mandan: por el nombre y el monto es
@@ -660,7 +665,11 @@ _ANCHOS = {
     # tanto ancho; el espacio sobrante se le da a la descripción contable, que es larga.
     "descripción banco": 250, "descripción contabilidad": 560, "descripción": 620,
     "comprobante": 110, "documento": 120,
-    "motivo": 200, "conciliado el": 130, "confianza": 200,
+    "motivo": 260, "conciliado el": 130, "confianza": 200,
+    # Cruce DIAN:
+    "nivel": 80, "fecha emisión": 104, "comprobante dian": 130, "nit": 100,
+    "emisor": 260, "total": 140, "causación": 90, "referencia avansant": 140,
+    "tercero avansant": 220, "fecha contable": 110, "cruzado el": 130, "candidatos": 460,
 }
 
 # Columnas que se ocultan en pantalla para dejarle todo el espacio a descripciones y
@@ -891,3 +900,32 @@ def login_pie(empresa):
         Acceso restringido · Si no tienes la clave, solicítala al área financiera.
     </div>
     """), unsafe_allow_html=True)
+
+
+def acceso_permitido(clave_acceso, empresa, titulo, subtitulo):
+    """Puerta de entrada reutilizable (usada por la pantalla inicial y por Cruce DIAN;
+    Cruce Bancario trae la suya propia sin cambios, para no tocar ese archivo). Misma
+    lógica en los tres casos: sin clave configurada no se pide nada; con clave, queda una
+    sola vez por sesión en `st.session_state["acceso_ok"]` — como el estado de sesión de
+    Streamlit es compartido entre todas las páginas, entrar una vez alcanza para las tres."""
+    if not clave_acceso:
+        return True
+    if st.session_state.get("acceso_ok"):
+        return True
+
+    login_css()
+    _, centro, _ = st.columns([1, 1.45, 1])
+    with centro:
+        with st.container(key="login_card"):
+            login_encabezado(titulo, subtitulo)
+            with st.form("acceso", border=False):
+                clave = st.text_input("Clave de acceso", type="password",
+                                      placeholder="Ingresa tu clave")
+                if st.form_submit_button("Ingresar", use_container_width=True):
+                    if hmac.compare_digest(clave, clave_acceso):
+                        st.session_state["acceso_ok"] = True
+                        st.rerun()
+                    else:
+                        st.error("Clave incorrecta. Vuelve a intentarlo.")
+        login_pie(empresa)
+    return False
