@@ -850,8 +850,7 @@ _COLS_FECHA = {"fecha", "fecha banco", "fecha contabilidad",
                # Cruce DIAN (ver conciliacion_dian.py) — nombres propios, agregados aparte
                # para no tocar el formato de ninguna columna que ya usa BANCARIO.
                "fecha emisión", "fecha contable"}
-_COLS_MONEDA = {"valor", "valor banco", "valor contabilidad", "diferencia",
-                "total"}  # "total" es de DIAN
+_COLS_MONEDA = {"valor", "valor banco", "valor contabilidad", "diferencia", "total", "valor avansant", "dif. valor"}  # "total" es de DIAN
 
 
 # Anchos en píxeles. Las descripciones y los valores mandan: por el nombre y el monto es
@@ -868,6 +867,7 @@ _ANCHOS = {
     # Cruce DIAN:
     "nivel": 80, "fecha emisión": 104, "comprobante dian": 130, "nit": 100,
     "emisor": 260, "total": 140, "causación": 90, "referencia avansant": 140,
+    "valor avansant": 140, "dif. valor": 130,
     "tercero avansant": 220, "fecha contable": 110, "cruzado el": 130, "candidatos": 460,
 }
 

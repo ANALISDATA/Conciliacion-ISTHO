@@ -186,6 +186,7 @@ def barra_resultado(df_filtrado, df_total, titulo_excel, nombre_archivo, key):
 # dibuja el sistema operativo y cambian de estilo entre Windows, Mac y móvil.
 HOJAS = [":material/donut_small: Resumen",
          ":material/link: Cruzados",
+         ":material/price_change: Diferencia de valor",
          ":material/rule: Requiere revisión",
          ":material/note_stack: Notas de crédito",
          ":material/content_copy: Duplicados Avansant",
@@ -210,6 +211,14 @@ n_cruzados = len(df_cruz)
 n_pendientes = len(df_sin)
 n_ambiguos = len(df_amb)
 pct_conciliado = (n_cruzados / n_dian_relevante * 100) if n_dian_relevante else 0
+
+# Cruces correctos (misma factura) pero con el valor distinto entre DIAN y Avansant: una
+# retención registrada neta, o un error al digitar. Se separan porque son plata que hay que
+# revisar y hasta ahora quedaban escondidos entre los cruces "Alta".
+df_dif_valor = (df_cruz[df_cruz["Dif. valor"].abs() > 1].copy().sort_values(
+                    "Dif. valor", key=lambda s: s.abs(), ascending=False)
+                if not df_cruz.empty else df_cruz)
+n_dif_valor = len(df_dif_valor)
 
 if st.session_state.get("aviso_dian"):
     st.success(st.session_state.pop("aviso_dian"))
@@ -250,6 +259,13 @@ if vista == HOJAS[0]:
         {"label": "Duplicados en Avansant", "value": f"{len(duplicados):,}", "icon": icono("alerta"),
          "accent": NARANJA, "sub": "misma referencia, distinto NIT"},
     ])
+
+    if n_dif_valor:
+        st.write("")
+        st.warning(f"**{n_dif_valor} documento(s) cruzados tienen un valor distinto entre la DIAN "
+                   f"y Avansant** (diferencia total ${df_dif_valor['Dif. valor'].sum():,.2f}). "
+                   f"Revísalos en la hoja **Diferencia de valor** — suele ser una retención "
+                   f"registrada neta o un error al digitar.")
 
     st.write("")
     niveles = {}
@@ -302,8 +318,25 @@ elif vista == HOJAS[1]:
         barra_resultado(filtrado, df_cruz, "CRUCE DIAN — CRUZADOS", "CRUCE DIAN - CRUZADOS", "cruzados")
         tabla(filtrado, height=850)
 
-# =============================================== HOJA 3 · REQUIERE REVISIÓN ==
+# ============================================= HOJA 3 · DIFERENCIA DE VALOR ==
 elif vista == HOJAS[2]:
+    if df_dif_valor.empty:
+        st.success("Todos los documentos cruzados tienen el mismo valor en la DIAN y en Avansant.")
+    else:
+        st.caption("Estos documentos **sí cruzaron** (misma factura, mismo NIT), pero el valor "
+                  "que reporta la DIAN y el que quedó causado en Avansant **no son iguales**. "
+                  "Suele ser una retención registrada neta o un error al digitar — vale la pena "
+                  "revisarlos uno por uno.")
+        filtrado = filtrar(df_dif_valor, "dif_valor", "Fecha Emisión",
+                           ["Comprobante DIAN", "NIT", "Emisor", "Causación"])
+        barra_resultado(filtrado, df_dif_valor, "CRUCE DIAN — DIFERENCIA DE VALOR",
+                        "CRUCE DIAN - DIFERENCIA VALOR", "dif_valor")
+        tabla(filtrado, height=800)
+        st.caption(f"Diferencia total (sin filtrar): "
+                   f"${df_dif_valor['Dif. valor'].sum():,.2f}")
+
+# =============================================== HOJA 4 · REQUIERE REVISIÓN ==
+elif vista == HOJAS[3]:
     if df_amb.empty:
         st.success("No hay documentos ambiguos — todo lo que tenía más de un candidato ya se resolvió.")
     else:
@@ -316,7 +349,7 @@ elif vista == HOJAS[2]:
         tabla(filtrado, height=850)
 
 # =============================================== HOJA 4 · NOTAS DE CRÉDITO ==
-elif vista == HOJAS[3]:
+elif vista == HOJAS[4]:
     st.caption("Notas de crédito electrónicas de la DIAN. Hoy no tienen nada con qué cruzar en "
               "Avansant (no generan causación ni reversión registrada), así que se muestran "
               "aparte — no cuentan como \"pendientes\".")
@@ -332,7 +365,7 @@ elif vista == HOJAS[3]:
         tabla(filtrado, height=600)
 
 # ============================================= HOJA 5 · DUPLICADOS AVANSANT ==
-elif vista == HOJAS[4]:
+elif vista == HOJAS[5]:
     st.caption("La misma referencia aparece escrita en 2 o más causaciones de Avansant, con "
               "NIT distinto en cada una — no hay forma de saber a cuál factura corresponde "
               "cada una solo con el texto, así que ninguna se cruzó automáticamente por esta vía.")
@@ -345,7 +378,7 @@ elif vista == HOJAS[4]:
         tabla(filtrado, height=500)
 
 # =================================================== HOJA 6 · PENDIENTES DIAN ==
-elif vista == HOJAS[5]:
+elif vista == HOJAS[6]:
     if df_sin.empty:
         st.success("No quedan documentos de DIAN sin causación en Avansant.")
     else:

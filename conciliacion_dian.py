@@ -297,7 +297,14 @@ def construir_vistas_dian(df_dian, df_avansat, cruces, ambiguos):
             "ID": c["id"], "Origen": c["origen"], "Nivel": c["nivel"],
             "Fecha Emisión": d["fecha_emision"], "Comprobante DIAN": d["comprobante"],
             "NIT": d["nit_emisor"], "Emisor": d["nombre_emisor"], "Total": d["total"],
-            "Causación": a["causacion"], "Referencia Avansant": a["referencia"],
+            "Causación": a["causacion"], "Valor Avansant": a["valor"],
+            # Un cruce puede ser correcto (misma factura, mismo NIT, misma referencia) y aun
+            # así traer un valor distinto: una retención que la contabilidad registró neta, o
+            # sencillamente un error al digitar. Antes no se veía en ninguna parte — el cruce
+            # salía como "Alta" y nadie se enteraba de la diferencia. Ahora va en su propia
+            # columna para que contabilidad la revise.
+            "Dif. valor": float(d["total"]) - float(a["valor"]),
+            "Referencia Avansant": a["referencia"],
             "Tercero Avansant": a["tercero"], "Fecha Contable": a["fecha_contable"],
             "Motivo": c["motivo"], "Cruzado el": c["fecha_hora"],
         })
