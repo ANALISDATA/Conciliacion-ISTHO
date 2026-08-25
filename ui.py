@@ -984,8 +984,13 @@ def menu_css():
        necesita su contenido, así que si una descripción es más larga que la otra,
        las tarjetas quedaban de tamaño distinto). */
     div[data-testid="stHorizontalBlock"] {{ align-items: stretch; }}
-    div[data-testid="column"] {{ display: flex; }}
-    div[data-testid="column"] > div {{ flex: 1; }}
+    div[data-testid="stColumn"] {{ display: flex; }}
+    div[data-testid="stColumn"] > div {{ flex: 1; }}
+    /* Streamlit mete una capa "stLayoutWrapper" entre la columna y el contenedor de la
+       tarjeta que no hereda altura sola — sin esto, la tarjeta con menos texto (Bancario)
+       quedaba más baja que la de al lado (DIAN). */
+    div[data-testid="stColumn"] div[data-testid="stVerticalBlock"] {{ height: 100%; }}
+    div[data-testid="stColumn"] div[data-testid="stLayoutWrapper"] {{ height: 100%; }}
     div[class*="st-key-menu_card_"] {{
         position: relative;
         background: rgba(8, 18, 52, 0.62) !important;
