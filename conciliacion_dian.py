@@ -375,6 +375,61 @@ def crear_cruce_manual_dian(cruces, dian_id, avansat_id, df_avansat):
     return cruces + [nuevo], nuevo["id"]
 
 
+def cruzar_en_lote(df_dian, df_avansat, cruces, asignaciones):
+    """Concilia varios documentos de una sola vez, desde la lista de pendientes.
+
+    Así es como se trabaja de verdad: la persona recorre los pendientes, busca cada factura
+    en el correo, la registra en Avansant, anota el número de causación al lado, y al final
+    los concilia todos juntos — en vez de entrar documento por documento.
+
+    `asignaciones` es una lista de `(dian_id, numero_causacion)`. Cada uno se valida por
+    separado: que la causación exista, que no esté ya usada por otro cruce, y que el NIT y
+    el valor tengan sentido contra la factura. Nunca se detiene por un error: los válidos se
+    aplican y los problemáticos se devuelven explicados, para no perder el trabajo bueno por
+    culpa de un número mal escrito.
+
+    Devuelve `(cruces_nuevos, aplicados, problemas)` — `problemas` es una lista de dicts con
+    `comprobante`, `numero` y `motivo` listos para mostrar."""
+    usadas = {c["avansat_id"] for c in cruces}
+    nuevos, problemas = list(cruces), []
+    aplicados = 0
+
+    for dian_id, numero in asignaciones:
+        numero = str(numero).strip()
+        if not numero:
+            continue
+        d = df_dian.loc[dian_id]
+        fila = buscar_causacion(df_avansat, numero)
+        if fila is None:
+            problemas.append({"comprobante": d["comprobante"], "numero": numero,
+                               "motivo": "No existe ninguna causación con ese número en Avansant."})
+            continue
+        avansat_id = int(fila["id"])
+        if avansat_id in usadas:
+            ya = next((c for c in nuevos if c["avansat_id"] == avansat_id), None)
+            otro = df_dian.loc[ya["dian_id"], "comprobante"] if ya else "otro documento"
+            problemas.append({"comprobante": d["comprobante"], "numero": numero,
+                               "motivo": f"Esa causación ya está cruzada con {otro}."})
+            continue
+
+        # El NIT y el valor no bloquean —quien concilia puede tener razones para forzarlo—
+        # pero sí se avisan, porque casi siempre significan que el número está equivocado.
+        avisos = []
+        if fila["nit"] and fila["nit"] != d["nit_emisor"]:
+            avisos.append(f"el NIT no coincide (Avansant: {fila['nit']})")
+        if abs(float(fila["valor"]) - float(d["total"])) >= 1:
+            avisos.append(f"el valor no coincide (Avansant: ${float(fila['valor']):,.2f})")
+
+        nuevos, _ = crear_cruce_manual_dian(nuevos, dian_id, avansat_id, df_avansat)
+        usadas.add(avansat_id)
+        aplicados += 1
+        if avisos:
+            problemas.append({"comprobante": d["comprobante"], "numero": numero,
+                               "motivo": "Se cruzó, pero revisa: " + " y ".join(avisos) + "."})
+
+    return nuevos, aplicados, problemas
+
+
 def eliminar_cruces_dian(cruces, ids):
     """Deshace los cruces indicados. Los documentos vuelven solos a pendientes porque las
     vistas se derivan de esta lista."""
