@@ -292,7 +292,7 @@ df_banco, df_libro = est["banco"], est["libro"]
 cruces, posibles = est["cruces"], est["posibles"]
 margen_valor = est["margen_valor"]
 
-df_conc, df_posibles, df_solo_banco, df_solo_libro = construir_vistas(
+df_conc, df_dif, df_posibles, df_solo_banco, df_solo_libro = construir_vistas(
     df_banco, df_libro, cruces, posibles)
 
 # --------------------------------------------------------- Barra superior --
@@ -301,6 +301,7 @@ df_conc, df_posibles, df_solo_banco, df_solo_libro = construir_vistas(
 # dibuja el sistema operativo y cambian de estilo entre Windows, Mac y móvil.
 HOJAS = [":material/donut_small: Resumen",
          ":material/link: Conciliados",
+         ":material/warning: Cruzados con diferencia",
          ":material/rule: Por revisar",
          ":material/account_balance: Pend. extracto",
          ":material/menu_book: Pend. libro auxiliar",
@@ -327,6 +328,7 @@ total_libro = df_libro["valor"].sum()
 total_solo_banco = df_solo_banco["valor"].sum() if not df_solo_banco.empty else 0.0
 total_solo_libro = df_solo_libro["valor"].sum() if not df_solo_libro.empty else 0.0
 n_conciliados = len(df_conc)
+n_dif = len(df_dif)
 n_cruces = len(cruces)
 n_manuales = sum(1 for c in cruces if c["origen"] == "Manual")
 n_posibles = len(df_posibles)
@@ -535,6 +537,10 @@ if vista == HOJAS[0]:
          "sub": f"en {n_cruces} conciliación(es)",
          "tip": "Movimientos que cruzaron con la contabilidad por valor exacto, ya sea uno a uno "
                 "o sumando varios entre sí."},
+        {"label": "Cruzados con diferencia", "value": f"{n_dif:,}", "icon": icono("alerta"), "accent": NARANJA,
+         "sub": "conciliación(es) manual(es)",
+         "tip": "Conciliaciones manuales donde el valor del banco y el de contabilidad no "
+                "coinciden. Quedan cruzadas igual, con la diferencia visible para revisión."},
         {"label": "Posibles (dif. valor)", "value": f"{n_posibles:,}", "icon": icono("lupa"), "accent": NARANJA,
          "sub": "fecha y nombre coinciden",
          "tip": f"Coinciden en fecha y nombre, pero el valor difiere hasta ${margen_valor:,.0f}. "
@@ -609,8 +615,25 @@ elif vista == HOJAS[1]:
                         "CONCILIACION BANCARIA - CONCILIADOS", "conciliados")
         tabla(filtrado, height=900)
 
-# ===================================================== HOJA 3 · POSIBLES ==
+# ============================== HOJA 3 · CRUZADOS CON DIFERENCIA ==
 elif vista == HOJAS[2]:
+    if df_dif.empty:
+        st.success("No hay cruces manuales con diferencia de valor.")
+    else:
+        st.caption("Conciliaciones manuales donde el valor del banco y el de contabilidad "
+                   "**no coinciden**. Quedan cruzadas igual — la diferencia se deja visible "
+                   "aquí para revisión posterior. Se pueden deshacer desde la hoja "
+                   "**Conciliados**, en «Deshacer conciliaciones».")
+        filtrado = filtrar(df_dif, "diferencia", "Fecha Banco",
+                            ["Descripción Banco", "Descripción Contabilidad", "Comprobante",
+                             "Documento", "ID", "Origen", "Motivo"]).sort_values("Fecha Banco")
+        barra_resultado(filtrado, df_dif, "CONCILIACIÓN BANCARIA — CRUZADOS CON DIFERENCIA",
+                        "CONCILIACION BANCARIA - CRUZADOS CON DIFERENCIA", "diferencia")
+        tabla(filtrado, height=900)
+        st.caption(f"Diferencia total (sin filtrar): {df_dif['Diferencia'].sum():,.2f}")
+
+# ===================================================== HOJA 4 · POSIBLES ==
+elif vista == HOJAS[3]:
     if df_posibles.empty:
         st.success("No se encontraron posibles diferencias de valor.")
     else:
@@ -623,8 +646,8 @@ elif vista == HOJAS[2]:
                         "CONCILIACION BANCARIA - POSIBLES", "posibles")
         tabla(filtrado, height=900)
 
-# ==================================== HOJA 4 · PENDIENTES DEL EXTRACTO ==
-elif vista == HOJAS[3]:
+# ==================================== HOJA 5 · PENDIENTES DEL EXTRACTO ==
+elif vista == HOJAS[4]:
     if df_solo_banco.empty:
         st.success("Todos los movimientos del extracto bancario fueron cruzados.")
     else:
@@ -639,8 +662,8 @@ elif vista == HOJAS[3]:
         tabla(filtrado, height=900)
         st.caption(f"Suma total (sin filtrar): {total_solo_banco:,.2f}")
 
-# =============================== HOJA 5 · PENDIENTES DEL LIBRO AUXILIAR ==
-elif vista == HOJAS[4]:
+# =============================== HOJA 6 · PENDIENTES DEL LIBRO AUXILIAR ==
+elif vista == HOJAS[5]:
     if df_solo_libro.empty:
         st.success("Todos los registros del libro auxiliar fueron cruzados.")
     else:
@@ -657,10 +680,11 @@ elif vista == HOJAS[4]:
         tabla(filtrado, height=900)
         st.caption(f"Suma total (sin filtrar): {total_solo_libro:,.2f}")
 
-# =========================================== HOJA 6 · CONCILIACIÓN MANUAL ==
+# =========================================== HOJA 7 · CONCILIACIÓN MANUAL ==
 else:
     section("Conciliación manual",
-            "Selecciona movimientos de cada lado; el botón Cruzar se habilita cuando los totales coinciden")
+            "Selecciona movimientos de cada lado y presiona Cruzar. Si los totales no "
+            "coinciden, el cruce se hace igual y queda en «Cruzados con diferencia»")
 
     if st.session_state.get("aviso"):
         st.success(st.session_state.pop("aviso"))
@@ -717,6 +741,8 @@ else:
     st.divider()
     dif_sel = round(total_sel_banco - total_sel_libro, 2)
     hay_seleccion = bool(ids_banco) and bool(ids_libro)
+    # Ya NO bloquea el cruce: solo cambia a qué hoja va a parar (ver más abajo). El botón
+    # Cruzar se habilita con solo tener selección en los dos lados.
     coinciden = hay_seleccion and abs(dif_sel) < 0.005
 
     stat_cards([
@@ -724,32 +750,47 @@ else:
          "accent": VERDE_OSC, "sub": f"{len(ids_banco)} registro(s)"},
         {"label": "Seleccionado en contabilidad", "value": f"{total_sel_libro:,.2f}", "icon": icono("libro"),
          "accent": VERDE_OSC, "sub": f"{len(ids_libro)} registro(s)"},
-        {"label": "Validación", "value": ("Coinciden" if coinciden else f"{abs(dif_sel):,.2f}"),
-         "icon": (icono("check") if coinciden else icono("alerta")), "accent": (VERDE if coinciden else ROJO),
+        {"label": "Diferencia", "value": ("Sin diferencia" if coinciden else f"{abs(dif_sel):,.2f}"),
+         "icon": (icono("check") if coinciden else icono("alerta")), "accent": (VERDE if coinciden else NARANJA),
          "sub": ("Los valores coinciden" if coinciden
                  else ("Selecciona en ambos lados" if not hay_seleccion
-                       else f"Diferencia de ${abs(dif_sel):,.2f}"))},
+                       else f"Se cruzará en «Cruzados con diferencia»"))},
     ])
 
     if coinciden:
         st.success(f"**Los valores coinciden** — {len(ids_banco)} movimiento(s) del banco por "
                    f"${abs(total_sel_banco):,.2f} contra {len(ids_libro)} de contabilidad. "
-                   "Puedes cruzarlos.")
+                   "Al cruzarlos quedarán en **Conciliados**.")
     elif hay_seleccion:
-        st.error(f"**Diferencia de ${abs(dif_sel):,.2f}** — los totales deben ser exactamente "
-                 "iguales para poder cruzar.")
+        st.warning(f"**Diferencia de ${abs(dif_sel):,.2f}** — puedes cruzar igual: quien concilia "
+                   "decide. El registro quedará en la hoja **Cruzados con diferencia**, con los dos "
+                   "valores y la diferencia visibles para revisión.")
     else:
         st.info("Selecciona al menos un movimiento en cada panel para poder cruzarlos.")
 
     col_b1, _ = st.columns([1, 3])
     with col_b1:
-        if st.button(":material/compare_arrows: Cruzar", type="primary", disabled=not coinciden,
+        # `disabled` ya no exige que coincidan los valores: solo que haya selección en los
+        # dos lados. Quien concilia decide si un cruce con diferencia es correcto; queda
+        # registrado en "Cruzados con diferencia" para poder revisarlo después (ver
+        # `construir_vistas` en conciliacion.py).
+        if st.button(":material/compare_arrows: Cruzar", type="primary", disabled=not hay_seleccion,
                      use_container_width=True, key="btn_cruzar"):
             nuevos, nuevo_id = crear_cruce_manual(cruces, ids_banco, ids_libro)
             st.session_state["estado"]["cruces"] = nuevos
             db.guardar_cambios(st.session_state["estado"]["periodo"], st.session_state["estado"])
             st.session_state["gen"] += 1
-            st.session_state["aviso"] = (
-                f"Conciliación **{nuevo_id}** creada: {len(ids_banco)} movimiento(s) del banco "
-                f"con {len(ids_libro)} de contabilidad por ${abs(total_sel_banco):,.2f}.")
+            if coinciden:
+                st.session_state["aviso"] = (
+                    f"Conciliación **{nuevo_id}** creada: {len(ids_banco)} movimiento(s) del banco "
+                    f"con {len(ids_libro)} de contabilidad por ${abs(total_sel_banco):,.2f} — "
+                    "quedó en **Conciliados**.")
+            else:
+                # Dos "$" en el mismo mensaje: Streamlit los interpreta como delimitadores de
+                # fórmula (LaTeX) si no se escapan, y el texto entre ellos sale en cursiva rota.
+                st.session_state["aviso"] = (
+                    f"Conciliación **{nuevo_id}** creada: {len(ids_banco)} movimiento(s) del banco "
+                    f"(\\${total_sel_banco:,.2f}) con {len(ids_libro)} de contabilidad "
+                    f"(\\${total_sel_libro:,.2f}), diferencia de \\${abs(dif_sel):,.2f} — quedó en "
+                    "**Cruzados con diferencia**.")
             st.rerun()

@@ -972,8 +972,40 @@ def _fila_cruce(c, b, l, valor):
     }
 
 
+def _fila_diferencia(df_banco, df_libro, c):
+    """Una fila por conciliación para 'Cruzados con diferencia': solo llegan aquí los cruces
+    (siempre manuales, ver `crear_cruce_manual`) cuyo valor de banco y de contabilidad no
+    coincide exactamente. Se muestran los dos totales y la diferencia, no un único 'Valor',
+    porque justamente no hay un valor común entre los dos lados."""
+    bs, ls = c["banco_ids"], c["libro_ids"]
+    v_banco = sum(float(df_banco.loc[i, "valor"]) for i in bs)
+    v_libro = sum(float(df_libro.loc[i, "valor"]) for i in ls)
+    return {
+        "ID": c["id"],
+        "Origen": c["origen"],
+        "Fecha Banco": df_banco.loc[bs[0], "fecha"] if len(bs) == 1 else None,
+        "Fecha Contabilidad": df_libro.loc[ls[0], "fecha"] if len(ls) == 1 else None,
+        "Valor Banco": v_banco,
+        "Valor Contabilidad": v_libro,
+        "Diferencia": v_banco - v_libro,
+        "Descripción Banco": "; ".join(str(df_banco.loc[i, "descripcion"]) for i in bs),
+        "Descripción Contabilidad": "; ".join(str(df_libro.loc[i, "descripcion"]) for i in ls),
+        "Comprobante": "; ".join(str(df_libro.loc[i, "comprobante"]) for i in ls
+                                  if pd.notna(df_libro.loc[i, "comprobante"])),
+        "Documento": "; ".join(str(df_libro.loc[i, "documento"]) for i in ls
+                                if pd.notna(df_libro.loc[i, "documento"])),
+        "Motivo": c["motivo"],
+        "Conciliado el": c["fecha_hora"],
+    }
+
+
 def construir_vistas(df_banco, df_libro, cruces, posibles):
-    """Deriva todas las tablas que ve el usuario a partir de la lista de cruces."""
+    """Deriva todas las tablas que ve el usuario a partir de la lista de cruces.
+
+    Los cruces cuyo valor de banco y de contabilidad no coincide exactamente al centavo —
+    algo que solo puede pasar en una conciliación manual, ver `crear_cruce_manual` — no van a
+    'Conciliados' sino a su propia vista, para que la diferencia quede visible y no se mezcle
+    con los cruces que sí cuadran."""
     banco_usados, libro_usados = set(), set()
     for c in cruces:
         banco_usados.update(c["banco_ids"])
@@ -982,8 +1014,14 @@ def construir_vistas(df_banco, df_libro, cruces, posibles):
         banco_usados.add(p["banco_id"])
         libro_usados.add(p["libro_id"])
 
-    filas = []
+    cruces_ok, cruces_dif = [], []
     for c in cruces:
+        v_banco = sum(_centavos(df_banco.loc[i, "valor"]) for i in c["banco_ids"])
+        v_libro = sum(_centavos(df_libro.loc[i, "valor"]) for i in c["libro_ids"])
+        (cruces_ok if v_banco == v_libro else cruces_dif).append(c)
+
+    filas = []
+    for c in cruces_ok:
         bs, ls = c["banco_ids"], c["libro_ids"]
         if len(ls) == 1 and len(bs) >= 1:
             l = df_libro.loc[ls[0]]
@@ -1004,6 +1042,8 @@ def construir_vistas(df_banco, df_libro, cruces, posibles):
                 filas.append(_fila_cruce(c, None, l, l["valor"]))
     df_conciliados = pd.DataFrame(filas)
 
+    df_diferencia = pd.DataFrame([_fila_diferencia(df_banco, df_libro, c) for c in cruces_dif])
+
     filas_pos = []
     for p in posibles:
         b, l = df_banco.loc[p["banco_id"]], df_libro.loc[p["libro_id"]]
@@ -1018,7 +1058,7 @@ def construir_vistas(df_banco, df_libro, cruces, posibles):
 
     df_solo_banco = df_banco[~df_banco["id"].isin(banco_usados)].reset_index(drop=True)
     df_solo_libro = df_libro[~df_libro["id"].isin(libro_usados)].reset_index(drop=True)
-    return df_conciliados, df_posibles, df_solo_banco, df_solo_libro
+    return df_conciliados, df_diferencia, df_posibles, df_solo_banco, df_solo_libro
 
 
 def resumen_cruces(df_banco, df_libro, cruces):
