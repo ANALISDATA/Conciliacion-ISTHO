@@ -6,11 +6,11 @@ import streamlit as st
 
 import db
 from conciliacion import (agregar_arrastre, aplicar_segunda_ronda, construir_vistas, crear_cruce_manual,
-                           descripcion_con_arrastre, eliminar_cruces, load_extracto, load_libro_auxiliar,
+                           descripciones_con_arrastre, eliminar_cruces, load_extracto, load_libro_auxiliar,
                            pendientes_nativos, reconciliar, resumen_cruces)
 from config import CLAVE_ACCESO
-from excel_export import (CUENTA_DEFECTO, EMPRESA, LOGO_PATH, NIT, build_tabla_workbook,
-                           periodo_desde_fechas)
+from excel_export import (CUENTA_DEFECTO, EMPRESA, LOGO_PATH, NIT, build_resumen_completo_workbook,
+                           build_tabla_workbook, periodo_desde_fechas)
 from ui import (GRIS, NARANJA, ROJO, VERDE, VERDE_OSC, badge, boton_inicio, hero, icono, inject_css,
                  loader, login_css, login_encabezado, login_pie, panel_toggle, section,
                  sidebar_brand, sidebar_step, stat_cards, tabla)
@@ -304,8 +304,16 @@ df_banco, df_libro = est["banco"], est["libro"]
 cruces, posibles = est["cruces"], est["posibles"]
 margen_valor = est["margen_valor"]
 
-df_conc, df_dif, df_posibles, df_solo_banco, df_solo_libro = construir_vistas(
-    df_banco, df_libro, cruces, posibles)
+# `construir_vistas` recorre cruces/posibles moviéndose fila por fila con `.loc[]` — con
+# cientos (o miles, con arrastre) de movimientos se nota al recalcularlo en CADA recarga,
+# incluida una tan simple como cambiar de hoja o escribir en un filtro. Nada de eso cambia
+# cruces/posibles, así que se guarda el resultado y solo se rehace cuando sí cambian: al
+# Conciliar, cerrar, cruzar o deshacer (todo eso ya incrementa "gen") o al retomar OTRO período.
+_vistas_key = (est.get("periodo"), st.session_state["gen"])
+if st.session_state.get("_vistas_key") != _vistas_key:
+    st.session_state["_vistas_cache"] = construir_vistas(df_banco, df_libro, cruces, posibles)
+    st.session_state["_vistas_key"] = _vistas_key
+df_conc, df_dif, df_posibles, df_solo_banco, df_solo_libro = st.session_state["_vistas_cache"]
 
 # --------------------------------------------------------- Barra superior --
 # Iconos Material (`:material/nombre:`), no emoji: Streamlit los reconoce en las etiquetas
@@ -580,6 +588,18 @@ if vista == HOJAS[0]:
         st.warning("La diferencia total no cuadra con las partidas sin cruzar. Revisa si hay valores "
                    "duplicados o registros parciales.")
 
+    section("Informe completo en un solo Excel",
+            "Conciliados, Cruzados con diferencia y Por revisar, uno debajo del otro con las "
+            "mismas columnas — si borras las filas de encabezado de cada sección, queda una "
+            "sola tabla unificada, sin tener que descargar hoja por hoja y pegarlas a mano.")
+    st.download_button(
+        ":material/download: Descargar informe completo en Excel",
+        data=build_resumen_completo_workbook(df_conc, df_dif, df_posibles, meta),
+        file_name=f"CONCILIACION BANCARIA - INFORME COMPLETO - {sufijo}.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        disabled=df_conc.empty and df_dif.empty and df_posibles.empty,
+    )
+
 # ================================================== HOJA 2 · CONCILIADOS ==
 elif vista == HOJAS[1]:
     if df_conc.empty:
@@ -670,7 +690,7 @@ elif vista == HOJAS[4]:
                    "contabilidad — posible partida pendiente de contabilizar.")
         mostrar = df_solo_banco[["fecha", "valor", "tipo", "descripcion"]].rename(columns={
             "fecha": "Fecha", "valor": "Valor", "tipo": "Tipo", "descripcion": "Descripción"})
-        mostrar["Descripción"] = df_solo_banco.apply(descripcion_con_arrastre, axis=1)
+        mostrar["Descripción"] = descripciones_con_arrastre(df_solo_banco)
         filtrado = filtrar(mostrar, "solo_banco", "Fecha", ["Descripción"],
                             columna_tipo="Tipo", permitir_orden=True)
         barra_resultado(filtrado, mostrar, "CONCILIACIÓN BANCARIA — PENDIENTES DEL EXTRACTO",
@@ -689,7 +709,7 @@ elif vista == HOJAS[5]:
                                   "documento"]].rename(
             columns={"fecha": "Fecha", "valor": "Valor", "tipo": "Tipo", "descripcion": "Descripción",
                      "comprobante": "Comprobante", "documento": "Documento"})
-        mostrar["Descripción"] = df_solo_libro.apply(descripcion_con_arrastre, axis=1)
+        mostrar["Descripción"] = descripciones_con_arrastre(df_solo_libro)
         filtrado = filtrar(mostrar, "solo_libro", "Fecha", ["Descripción", "Comprobante", "Documento"],
                             columna_tipo="Tipo", permitir_orden=True)
         barra_resultado(filtrado, mostrar, "CONCILIACIÓN BANCARIA — PENDIENTES DEL LIBRO AUXILIAR",
@@ -731,7 +751,7 @@ else:
             "fecha": "Fecha", "valor": "Valor", "tipo": "Tipo", "descripcion": "Descripción",
             "comprobante": "Comprobante", "documento": "Documento"})
         if "descripcion" in columnas:
-            mostrar["Descripción"] = filtrado.apply(descripcion_con_arrastre, axis=1)
+            mostrar["Descripción"] = descripciones_con_arrastre(filtrado)
         ev = st.dataframe(
             mostrar, use_container_width=True, hide_index=True, height=430, row_height=34,
             on_select="rerun", selection_mode="multi-row", key=f"sel_{key}_{gen}",

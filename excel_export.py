@@ -198,3 +198,89 @@ def build_tabla_workbook(df, meta, titulo, nombre_hoja="Detalle"):
     workbook.close()
     return buffer.getvalue()
 
+
+# --------------------------------------------------------------------------------
+# Informe completo: Conciliados + Cruzados con diferencia + Por revisar, uno debajo del
+# otro en UNA sola hoja, con las mismas columnas — para que quien lo reciba pueda borrar
+# las filas de encabezado de sección y quedarse con una sola tabla unificada, sin tener
+# que descargar cada hoja por separado y pegarlas a mano.
+# --------------------------------------------------------------------------------
+_COLUMNAS_RESUMEN = [
+    ("Estado", "estado", "texto"),
+    ("ID", "ID", "texto"),
+    ("Fecha Banco", "Fecha Banco", "fecha"),
+    ("Fecha Contabilidad", "Fecha Contabilidad", "fecha"),
+    ("Valor Banco", "Valor Banco", "moneda"),
+    ("Valor Contabilidad", "Valor Contabilidad", "moneda"),
+    ("Diferencia", "Diferencia", "moneda"),
+    ("Descripción Banco", "Descripción Banco", "texto"),
+    ("Descripción Contabilidad", "Descripción Contabilidad", "texto"),
+    ("Comprobante", "Comprobante", "texto"),
+    ("Documento", "Documento", "texto"),
+    ("Motivo", "Motivo", "texto"),
+]
+
+
+def _a_columnas_resumen(df, estado, campo_valor=None):
+    """Lleva cualquiera de las 3 tablas (Conciliados/Diferencia/Posibles) al mismo juego de
+    columnas, para que las tres se puedan apilar como una sola tabla. `campo_valor`: en
+    Conciliados no hay "Valor Banco"/"Valor Contabilidad" separados (el cruce cuadra exacto),
+    así que la única columna "Valor" que trae alimenta las dos, con Diferencia en 0."""
+    out = pd.DataFrame(index=df.index)
+    out["estado"] = estado
+    out["ID"] = df["ID"] if "ID" in df.columns else ""
+    out["Fecha Banco"] = df.get("Fecha Banco")
+    out["Fecha Contabilidad"] = df.get("Fecha Contabilidad")
+    if campo_valor:
+        out["Valor Banco"] = df[campo_valor]
+        out["Valor Contabilidad"] = df[campo_valor]
+        out["Diferencia"] = 0.0
+    else:
+        out["Valor Banco"] = df.get("Valor Banco")
+        out["Valor Contabilidad"] = df.get("Valor Contabilidad")
+        out["Diferencia"] = df.get("Diferencia")
+    out["Descripción Banco"] = df.get("Descripción Banco", "")
+    out["Descripción Contabilidad"] = df.get("Descripción Contabilidad", "")
+    out["Comprobante"] = df.get("Comprobante", "")
+    out["Documento"] = df.get("Documento", "")
+    out["Motivo"] = df.get("Motivo", "")
+    return out
+
+
+def _escribir_seccion(worksheet, fmts, start_row, titulo, df, n_columnas):
+    """Una franja con el nombre de la sección (fila que se puede borrar entera) seguida de
+    su tabla. Devuelve la fila siguiente libre."""
+    worksheet.set_row(start_row, 22)
+    worksheet.merge_range(start_row, 0, start_row, n_columnas - 1,
+                           f"{titulo}  ({len(df)} movimiento(s))", fmts["total_label"])
+    fin = _escribir_tabla(worksheet, fmts, start_row + 1, _COLUMNAS_RESUMEN, df)
+    return fin + 1  # una fila de aire antes de la siguiente sección
+
+
+def build_resumen_completo_workbook(df_conc, df_dif, df_posibles, meta):
+    """Informe completo de un solo cruce: las tres tablas (Conciliados, Cruzados con
+    diferencia, Por revisar) apiladas en una sola hoja, cada una con su propio encabezado de
+    sección. Se salta la sección que venga vacía, para no dejar un encabezado sin nada debajo."""
+    buffer = io.BytesIO()
+    workbook = xlsxwriter.Workbook(buffer, {"in_memory": True})
+    ws = workbook.add_worksheet("Informe completo")
+
+    n_columnas = len(_COLUMNAS_RESUMEN)
+    fmts, siguiente = _encabezado(workbook, ws, "CONCILIACIÓN BANCARIA — INFORME COMPLETO",
+                                   meta, n_columnas)
+    siguiente += 1
+
+    secciones = [
+        ("CONCILIADOS", _a_columnas_resumen(df_conc, "Conciliado", campo_valor="Valor")),
+        ("CRUZADOS CON DIFERENCIA", _a_columnas_resumen(df_dif, "Cruzado con diferencia")),
+        ("POR REVISAR", _a_columnas_resumen(df_posibles, "Por revisar")),
+    ]
+    for titulo, df in secciones:
+        if df.empty:
+            continue
+        siguiente = _escribir_seccion(ws, fmts, siguiente, titulo, df, n_columnas)
+
+    _ajustar_anchos(ws, [_ANCHOS_EXCEL.get(campo.lower(), 20) for _, campo, _ in _COLUMNAS_RESUMEN])
+    workbook.close()
+    return buffer.getvalue()
+

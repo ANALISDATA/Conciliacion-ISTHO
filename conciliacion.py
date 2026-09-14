@@ -368,6 +368,23 @@ def descripcion_con_arrastre(row):
     return f"[Arrastre {origen}] {desc}" if origen else desc
 
 
+def descripciones_con_arrastre(df):
+    """Igual que `descripcion_con_arrastre`, pero para una columna completa de una sola vez —
+    con operaciones de pandas en vez de `.apply(..., axis=1)` fila por fila, que en Pend.
+    extracto/Pend. libro auxiliar/Cruce manual (cientos de filas, más aún con arrastre) se nota
+    como lentitud cada vez que se cambia de hoja o se filtra. Se usa en la pantalla; el motor de
+    cruce sigue leyendo `descripcion`/`beneficiario` sin este prefijo (ver la nota de arriba)."""
+    desc = df["descripcion"].astype(str)
+    if "arrastre_de" not in df.columns:
+        return desc
+    origen = df["arrastre_de"].fillna("")
+    con_arrastre = origen != ""
+    if not con_arrastre.any():
+        return desc
+    etiqueta = "[Arrastre " + origen + "] " + desc
+    return desc.where(~con_arrastre, etiqueta)
+
+
 def _centavos(v):
     return int(round(v * 100))
 
