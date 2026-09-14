@@ -167,6 +167,14 @@ def cargar_estado(periodo):
     libro = pd.read_json(io.StringIO(fila["libro"]), orient="split")
     banco["fecha"] = pd.to_datetime(banco["fecha"]).dt.date
     libro["fecha"] = pd.to_datetime(libro["fecha"]).dt.date
+    # Una conciliación guardada ANTES de que existiera el arrastre de pendientes (ver
+    # conciliacion.agregar_arrastre) no tiene esta columna en su JSON — sin este backfill,
+    # retomarla revienta con KeyError en cuanto algo la busca (descripcion_con_arrastre,
+    # pendientes_nativos, etc.).
+    if "arrastre_de" not in banco.columns:
+        banco["arrastre_de"] = ""
+    if "arrastre_de" not in libro.columns:
+        libro["arrastre_de"] = ""
     return {
         "banco": banco,
         "libro": libro,

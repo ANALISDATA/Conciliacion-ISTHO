@@ -358,8 +358,12 @@ def descripcion_con_arrastre(row):
 
     A propósito NO se usa para nada que alimente el motor de cruce (`_validar_nombre` compara
     directamente contra `descripcion`/`beneficiario`, sin este prefijo) — mezclar palabras
-    como el año o "Arrastre" en el texto que se compara podría dañar la validación de nombre."""
-    origen = row["arrastre_de"]
+    como el año o "Arrastre" en el texto que se compara podría dañar la validación de nombre.
+
+    `row.get(...)` y no `row[...]`: una conciliación guardada antes de que existiera esta
+    columna (ver `db.cargar_estado`) puede llegar sin ella pese al backfill de ahí — más vale
+    mostrar la descripción sin etiqueta que reventar la pantalla entera."""
+    origen = row.get("arrastre_de", "")
     desc = str(row["descripcion"])
     return f"[Arrastre {origen}] {desc}" if origen else desc
 
