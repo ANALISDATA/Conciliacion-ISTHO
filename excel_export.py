@@ -11,6 +11,9 @@ LOGO_PATH = os.path.join(os.path.dirname(__file__), "logo_istho.png")
 # El nombre de la empresa, el NIT y la cuenta ya no están escritos aquí: se leen de la
 # configuración privada (ver config.py), para que el código pueda publicarse sin exponerlos.
 from config import CUENTA_DEFECTO, EMPRESA, NIT  # noqa: E402  (re-exportados por compatibilidad)
+# Para que un pendiente arrastrado de un cierre anterior lleve la misma etiqueta "[Arrastre
+# <período>]" en el informe completo que ya se ve en pantalla (ver conciliacion.py).
+from conciliacion import descripciones_con_arrastre  # noqa: E402
 
 MESES = {1: "Enero", 2: "Febrero", 3: "Marzo", 4: "Abril", 5: "Mayo", 6: "Junio",
          7: "Julio", 8: "Agosto", 9: "Septiembre", 10: "Octubre", 11: "Noviembre", 12: "Diciembre"}
@@ -257,6 +260,41 @@ def _a_columnas_resumen(df, estado, campo_valor=None):
     return out
 
 
+def _pendientes_a_columnas_resumen(df, lado):
+    """Lleva un pendiente (df_solo_banco/df_solo_libro, tal como los devuelve
+    `conciliacion.construir_vistas`, con sus columnas en minúscula) al mismo juego de columnas
+    que las demás secciones — así el informe completo también incluye lo que quedó sin cruzar
+    de cada lado, no solo lo ya cruzado. `lado`: "banco" o "libro"."""
+    out = pd.DataFrame(index=df.index)
+    desc = descripciones_con_arrastre(df)
+    if lado == "banco":
+        out["estado"] = "Pendiente en el banco"
+        out["ID"] = ""
+        out["Fecha Banco"] = df["fecha"]
+        out["Fecha Contabilidad"] = pd.NaT
+        out["Valor Banco"] = df["valor"]
+        out["Valor Contabilidad"] = 0.0
+        out["Descripción Banco"] = desc
+        out["Descripción Contabilidad"] = ""
+        out["Comprobante"] = ""
+        out["Documento"] = ""
+        out["Motivo"] = "Sin registro en la contabilidad"
+    else:
+        out["estado"] = "Pendiente en contabilidad"
+        out["ID"] = ""
+        out["Fecha Banco"] = pd.NaT
+        out["Fecha Contabilidad"] = df["fecha"]
+        out["Valor Banco"] = 0.0
+        out["Valor Contabilidad"] = df["valor"]
+        out["Descripción Banco"] = ""
+        out["Descripción Contabilidad"] = desc
+        out["Comprobante"] = df.get("comprobante", "")
+        out["Documento"] = df.get("documento", "")
+        out["Motivo"] = "Sin registro en el banco"
+    out["Diferencia"] = out["Valor Banco"] - out["Valor Contabilidad"]
+    return out[[c for _, c, _ in _COLUMNAS_RESUMEN]]
+
+
 def _escribir_seccion(worksheet, fmts, start_row, titulo, df, n_columnas):
     """Una franja con el nombre de la sección (fila que se puede borrar entera) seguida de
     su tabla. Sin autofilter/freeze propios (`congelar_y_filtrar=False`): eso se decide una
@@ -270,10 +308,11 @@ def _escribir_seccion(worksheet, fmts, start_row, titulo, df, n_columnas):
     return fin + 1  # una fila de aire antes de la siguiente sección
 
 
-def build_resumen_completo_workbook(df_conc, df_dif, df_posibles, meta):
-    """Informe completo de un solo cruce: las tres tablas (Conciliados, Cruzados con
-    diferencia, Por revisar) apiladas en una sola hoja, cada una con su propio encabezado de
-    sección. Se salta la sección que venga vacía, para no dejar un encabezado sin nada debajo."""
+def build_resumen_completo_workbook(df_conc, df_dif, df_posibles, df_solo_banco, df_solo_libro, meta):
+    """Informe completo de un solo cruce: Conciliados, Cruzados con diferencia, Por revisar,
+    Pendientes del banco y Pendientes del libro auxiliar, apiladas en una sola hoja, cada una
+    con su propio encabezado de sección. Se salta la sección que venga vacía, para no dejar un
+    encabezado sin nada debajo."""
     buffer = io.BytesIO()
     workbook = xlsxwriter.Workbook(buffer, {"in_memory": True})
     ws = workbook.add_worksheet("Informe completo")
@@ -283,15 +322,17 @@ def build_resumen_completo_workbook(df_conc, df_dif, df_posibles, meta):
                                    meta, n_columnas)
     siguiente += 1
     # Un solo congelado para TODA la hoja, justo debajo del membrete — así el membrete queda
-    # fijo arriba y el resto (las 3 secciones completas) se desplaza libremente. Antes cada
-    # sección congelaba la suya y solo quedaba la última, que caía casi al final de la hoja y
-    # dejaba ver "solo la pantalla principal" sin poder bajar más.
+    # fijo arriba y el resto (todas las secciones) se desplaza libremente. Antes cada sección
+    # congelaba la suya y solo quedaba la última, que caía casi al final de la hoja y dejaba
+    # ver "solo la pantalla principal" sin poder bajar más.
     ws.freeze_panes(siguiente, 0)
 
     secciones = [
         ("CONCILIADOS", _a_columnas_resumen(df_conc, "Conciliado", campo_valor="Valor")),
         ("CRUZADOS CON DIFERENCIA", _a_columnas_resumen(df_dif, "Cruzado con diferencia")),
         ("POR REVISAR", _a_columnas_resumen(df_posibles, "Por revisar")),
+        ("PENDIENTES DEL BANCO", _pendientes_a_columnas_resumen(df_solo_banco, "banco")),
+        ("PENDIENTES DEL LIBRO AUXILIAR", _pendientes_a_columnas_resumen(df_solo_libro, "libro")),
     ]
     for titulo, df in secciones:
         if df.empty:

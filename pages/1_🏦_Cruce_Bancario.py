@@ -589,15 +589,17 @@ if vista == HOJAS[0]:
                    "duplicados o registros parciales.")
 
     section("Informe completo en un solo Excel",
-            "Conciliados, Cruzados con diferencia y Por revisar, uno debajo del otro con las "
-            "mismas columnas — si borras las filas de encabezado de cada sección, queda una "
-            "sola tabla unificada, sin tener que descargar hoja por hoja y pegarlas a mano.")
+            "Conciliados, Cruzados con diferencia, Por revisar, Pendientes del banco y "
+            "Pendientes del libro auxiliar, uno debajo del otro con las mismas columnas — si "
+            "borras las filas de encabezado de cada sección, queda una sola tabla unificada, "
+            "sin tener que descargar hoja por hoja y pegarlas a mano.")
     st.download_button(
         ":material/download: Descargar informe completo en Excel",
-        data=build_resumen_completo_workbook(df_conc, df_dif, df_posibles, meta),
+        data=build_resumen_completo_workbook(df_conc, df_dif, df_posibles, df_solo_banco, df_solo_libro, meta),
         file_name=f"CONCILIACION BANCARIA - INFORME COMPLETO - {sufijo}.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        disabled=df_conc.empty and df_dif.empty and df_posibles.empty,
+        disabled=(df_conc.empty and df_dif.empty and df_posibles.empty
+                  and df_solo_banco.empty and df_solo_libro.empty),
     )
 
 # ================================================== HOJA 2 · CONCILIADOS ==
