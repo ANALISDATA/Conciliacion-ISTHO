@@ -1,4 +1,5 @@
 """Lógica de carga y cruce (fecha + valor + nombre) entre extracto bancario y libro auxiliar."""
+import io
 import re
 import unicodedata
 from collections import defaultdict
@@ -249,6 +250,7 @@ def load_extracto(file):
     df = df.dropna(subset=["fecha"]).reset_index(drop=True)
     df["id"] = df.index
     df["tipo"] = df["valor"].apply(lambda v: "Entrada" if v >= 0 else "Salida")
+    df["arrastre_de"] = ""  # ver `agregar_arrastre`: vacío salvo en filas traídas de un mes anterior
     return df
 
 
@@ -303,7 +305,63 @@ def load_libro_auxiliar(file):
     out = out.dropna(subset=["fecha"]).reset_index(drop=True)
     out["id"] = out.index
     out["tipo"] = out["valor"].apply(lambda v: "Entrada" if v >= 0 else "Salida")
+    out["arrastre_de"] = ""  # ver `agregar_arrastre`: vacío salvo en filas traídas de un mes anterior
     return out
+
+
+def agregar_arrastre(df_banco, df_libro, pendientes_banco_json, pendientes_libro_json, periodo_origen):
+    """Agrega al mes recién cargado los pendientes que quedaron del cierre anterior (guardados
+    con `pendientes_nativos` en `db.guardar_cierre`), para que el motor los intente cruzar
+    también contra los movimientos nuevos — ej. un pago de fin de mes que se contabilizó al
+    mes siguiente.
+
+    Se etiquetan con `arrastre_de` = periodo de origen (columna que ya traen `df_banco`/
+    `df_libro`, vacía para lo propio de este mes) para no perder de vista que son viejos —
+    ver `descripcion_con_arrastre`. Los "id" se reasignan sobre el conjunto ya unido para que
+    sigan siendo únicos y sirvan como posición (`df.index`), igual que al cargar un archivo.
+
+    No hay riesgo de arrastrar dos veces lo mismo: lo que ya llegó arrastrado y no cruzó en su
+    mes nuevo no se vuelve a guardar como pendiente al cerrar ESE mes (`pendientes_nativos`
+    lo excluye), así que nunca vuelve a aparecer aquí."""
+    if pendientes_banco_json:
+        pend_banco = pd.read_json(io.StringIO(pendientes_banco_json), orient="split")
+        if not pend_banco.empty:
+            pend_banco["fecha"] = pd.to_datetime(pend_banco["fecha"]).dt.date
+            pend_banco["arrastre_de"] = periodo_origen
+            df_banco = pd.concat([df_banco, pend_banco], ignore_index=True)
+            df_banco["id"] = df_banco.index
+    if pendientes_libro_json:
+        pend_libro = pd.read_json(io.StringIO(pendientes_libro_json), orient="split")
+        if not pend_libro.empty:
+            pend_libro["fecha"] = pd.to_datetime(pend_libro["fecha"]).dt.date
+            pend_libro["arrastre_de"] = periodo_origen
+            df_libro = pd.concat([df_libro, pend_libro], ignore_index=True)
+            df_libro["id"] = df_libro.index
+    return df_banco, df_libro
+
+
+def pendientes_nativos(df_solo_banco, df_solo_libro):
+    """Los pendientes de ESTE período (no los que ya llegaron arrastrados de un cierre
+    anterior), listos para guardarse al cerrar — ver `db.guardar_cierre`. El arrastre dura
+    una sola vuelta a propósito: lo que ya se arrastró una vez y sigue sin cruzar se queda
+    marcado en este mes (ver `descripcion_con_arrastre`), pero no se incluye aquí, así que
+    no viaja a un tercer mes."""
+    banco = df_solo_banco[df_solo_banco["arrastre_de"] == ""]
+    libro = df_solo_libro[df_solo_libro["arrastre_de"] == ""]
+    return banco, libro
+
+
+def descripcion_con_arrastre(row):
+    """La descripción que se le muestra al usuario: igual a la original, salvo que la fila
+    venga arrastrada de un cierre anterior (columna `arrastre_de` no vacía), caso en el que se
+    antepone «[Arrastre <período>]» para que no se confunda con un pendiente nuevo de este mes.
+
+    A propósito NO se usa para nada que alimente el motor de cruce (`_validar_nombre` compara
+    directamente contra `descripcion`/`beneficiario`, sin este prefijo) — mezclar palabras
+    como el año o "Arrastre" en el texto que se compara podría dañar la validación de nombre."""
+    origen = row["arrastre_de"]
+    desc = str(row["descripcion"])
+    return f"[Arrastre {origen}] {desc}" if origen else desc
 
 
 def _centavos(v):
@@ -936,11 +994,21 @@ def siguiente_id_manual(cruces):
 
 
 def crear_cruce_manual(cruces, banco_ids, libro_ids):
-    """Agrega una conciliación manual a la lista y devuelve la nueva lista (no muta la original)."""
+    """Agrega una conciliación manual a la lista y devuelve la nueva lista (no muta la original).
+
+    Admite dejar un lado vacío: cruzar 2 o más movimientos del MISMO lado entre sí (ej. un pago
+    y su devolución, ambos en el extracto, sin ningún registro contable de por medio) — el
+    motivo queda redactado distinto para que se note que no es un cruce banco↔contabilidad."""
+    if not libro_ids:
+        motivo = f"Conciliación manual entre {len(banco_ids)} mov. del banco (se anulan entre sí)"
+    elif not banco_ids:
+        motivo = f"Conciliación manual entre {len(libro_ids)} mov. de contabilidad (se anulan entre sí)"
+    else:
+        motivo = f"Conciliación manual ({len(banco_ids)} mov. banco ↔ {len(libro_ids)} mov. contabilidad)"
     nuevo = {
         "id": siguiente_id_manual(cruces),
         "origen": "Manual",
-        "motivo": f"Conciliación manual ({len(banco_ids)} mov. banco ↔ {len(libro_ids)} mov. contabilidad)",
+        "motivo": motivo,
         "fecha_hora": datetime.now().strftime("%d/%m/%Y %H:%M:%S"),
         "banco_ids": [int(i) for i in banco_ids],
         "libro_ids": [int(i) for i in libro_ids],
@@ -963,8 +1031,8 @@ def _fila_cruce(c, b, l, valor):
         "Fecha Contabilidad": l["fecha"] if l is not None else None,
         "Dif. días": (abs((b["fecha"] - l["fecha"]).days) if b is not None and l is not None else 0),
         "Valor": valor,
-        "Descripción Banco": b["descripcion"] if b is not None else "",
-        "Descripción Contabilidad": l["descripcion"] if l is not None else "",
+        "Descripción Banco": descripcion_con_arrastre(b) if b is not None else "",
+        "Descripción Contabilidad": descripcion_con_arrastre(l) if l is not None else "",
         "Comprobante": l["comprobante"] if l is not None else "",
         "Documento": l["documento"] if l is not None else "",
         "Motivo": c["motivo"],
@@ -983,13 +1051,16 @@ def _fila_diferencia(df_banco, df_libro, c):
     return {
         "ID": c["id"],
         "Origen": c["origen"],
-        "Fecha Banco": df_banco.loc[bs[0], "fecha"] if len(bs) == 1 else None,
-        "Fecha Contabilidad": df_libro.loc[ls[0], "fecha"] if len(ls) == 1 else None,
+        # pd.NaT y no None: con más de un movimiento por lado no hay una sola fecha que
+        # mostrar, y NaT es lo que st.column_config.DateColumn pinta en blanco — None sale
+        # como el texto literal "None" en la tabla (ver la misma trampa en ui.tabla()).
+        "Fecha Banco": df_banco.loc[bs[0], "fecha"] if len(bs) == 1 else pd.NaT,
+        "Fecha Contabilidad": df_libro.loc[ls[0], "fecha"] if len(ls) == 1 else pd.NaT,
         "Valor Banco": v_banco,
         "Valor Contabilidad": v_libro,
         "Diferencia": v_banco - v_libro,
-        "Descripción Banco": "; ".join(str(df_banco.loc[i, "descripcion"]) for i in bs),
-        "Descripción Contabilidad": "; ".join(str(df_libro.loc[i, "descripcion"]) for i in ls),
+        "Descripción Banco": "; ".join(descripcion_con_arrastre(df_banco.loc[i]) for i in bs),
+        "Descripción Contabilidad": "; ".join(descripcion_con_arrastre(df_libro.loc[i]) for i in ls),
         "Comprobante": "; ".join(str(df_libro.loc[i, "comprobante"]) for i in ls
                                   if pd.notna(df_libro.loc[i, "comprobante"])),
         "Documento": "; ".join(str(df_libro.loc[i, "documento"]) for i in ls
@@ -1023,7 +1094,15 @@ def construir_vistas(df_banco, df_libro, cruces, posibles):
     filas = []
     for c in cruces_ok:
         bs, ls = c["banco_ids"], c["libro_ids"]
-        if len(ls) == 1 and len(bs) >= 1:
+        if not ls:  # solo banco: cruce manual entre movimientos del mismo lado (se anulan)
+            for bi in bs:
+                b = df_banco.loc[bi]
+                filas.append(_fila_cruce(c, b, None, b["valor"]))
+        elif not bs:  # solo contabilidad, simétrico al caso anterior
+            for li in ls:
+                l = df_libro.loc[li]
+                filas.append(_fila_cruce(c, None, l, l["valor"]))
+        elif len(ls) == 1:
             l = df_libro.loc[ls[0]]
             for bi in bs:
                 b = df_banco.loc[bi]
@@ -1051,7 +1130,7 @@ def construir_vistas(df_banco, df_libro, cruces, posibles):
             "Fecha Banco": b["fecha"], "Fecha Contabilidad": l["fecha"],
             "Valor Banco": b["valor"], "Valor Contabilidad": l["valor"],
             "Diferencia": p["diferencia"],
-            "Descripción Banco": b["descripcion"], "Descripción Contabilidad": l["descripcion"],
+            "Descripción Banco": descripcion_con_arrastre(b), "Descripción Contabilidad": descripcion_con_arrastre(l),
             "Comprobante": l["comprobante"], "Documento": l["documento"],
         })
     df_posibles = pd.DataFrame(filas_pos)
@@ -1070,8 +1149,8 @@ def resumen_cruces(df_banco, df_libro, cruces):
     for c in cruces:
         v_banco = sum(float(df_banco.loc[i, "valor"]) for i in c["banco_ids"])
         v_libro = sum(float(df_libro.loc[i, "valor"]) for i in c["libro_ids"])
-        desc_banco = "; ".join(str(df_banco.loc[i, "descripcion"]) for i in c["banco_ids"])
-        desc_libro = "; ".join(str(df_libro.loc[i, "descripcion"]) for i in c["libro_ids"])
+        desc_banco = "; ".join(descripcion_con_arrastre(df_banco.loc[i]) for i in c["banco_ids"])
+        desc_libro = "; ".join(descripcion_con_arrastre(df_libro.loc[i]) for i in c["libro_ids"])
         filas.append({
             "ID": c["id"],
             "Origen": c["origen"],

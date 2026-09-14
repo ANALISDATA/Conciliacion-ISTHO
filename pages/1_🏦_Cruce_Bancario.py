@@ -5,8 +5,9 @@ from datetime import datetime
 import streamlit as st
 
 import db
-from conciliacion import (aplicar_segunda_ronda, construir_vistas, crear_cruce_manual, eliminar_cruces,
-                           load_extracto, load_libro_auxiliar, reconciliar, resumen_cruces)
+from conciliacion import (agregar_arrastre, aplicar_segunda_ronda, construir_vistas, crear_cruce_manual,
+                           descripcion_con_arrastre, eliminar_cruces, load_extracto, load_libro_auxiliar,
+                           pendientes_nativos, reconciliar, resumen_cruces)
 from config import CLAVE_ACCESO
 from excel_export import (CUENTA_DEFECTO, EMPRESA, LOGO_PATH, NIT, build_tabla_workbook,
                            periodo_desde_fechas)
@@ -231,6 +232,17 @@ if ejecutar:
                                      f"{len(df_banco):,} movimientos del banco cargados"),
                               unsafe_allow_html=True)
             df_libro = load_libro_auxiliar(archivo_libro)
+
+            # Si el mes anterior quedó cerrado con pendientes propios (no arrastrados a su
+            # vez), se agregan aquí para que el motor los intente cruzar también contra los
+            # movimientos que se acaban de cargar — ver `agregar_arrastre` y `db.ultimo_cierre`.
+            arrastre_previo = db.ultimo_cierre() if db.disponible() else None
+            if arrastre_previo and (arrastre_previo.get("pendientes_banco")
+                                     or arrastre_previo.get("pendientes_libro")):
+                df_banco, df_libro = agregar_arrastre(
+                    df_banco, df_libro,
+                    arrastre_previo.get("pendientes_banco"), arrastre_previo.get("pendientes_libro"),
+                    arrastre_previo.get("periodo"))
 
             pantalla.markdown(loader("Conciliando movimientos…",
                                      f"Cruzando {len(df_banco):,} movimientos del banco contra "
@@ -522,7 +534,10 @@ if vista == HOJAS[0]:
             st.session_state["estado"]["saldo_final_banco"] = saldo_final
             st.session_state["estado"]["saldo_final_libro"] = saldo_final_libro
             st.session_state["estado"]["cerrado_en"] = datetime.now().isoformat()
-            db.guardar_cambios(est["periodo"], st.session_state["estado"])
+            # Solo los pendientes NACIDOS este mes viajan al siguiente (ver `pendientes_nativos`):
+            # lo que ya llegó arrastrado y sigue sin cruzar se queda marcado aquí, sin seguir de mes en mes.
+            pend_banco_nativo, pend_libro_nativo = pendientes_nativos(df_solo_banco, df_solo_libro)
+            db.guardar_cierre(est["periodo"], st.session_state["estado"], pend_banco_nativo, pend_libro_nativo)
             st.session_state["aviso"] = "Conciliación marcada como terminada."
             st.rerun()
 
@@ -655,6 +670,7 @@ elif vista == HOJAS[4]:
                    "contabilidad — posible partida pendiente de contabilizar.")
         mostrar = df_solo_banco[["fecha", "valor", "tipo", "descripcion"]].rename(columns={
             "fecha": "Fecha", "valor": "Valor", "tipo": "Tipo", "descripcion": "Descripción"})
+        mostrar["Descripción"] = df_solo_banco.apply(descripcion_con_arrastre, axis=1)
         filtrado = filtrar(mostrar, "solo_banco", "Fecha", ["Descripción"],
                             columna_tipo="Tipo", permitir_orden=True)
         barra_resultado(filtrado, mostrar, "CONCILIACIÓN BANCARIA — PENDIENTES DEL EXTRACTO",
@@ -673,6 +689,7 @@ elif vista == HOJAS[5]:
                                   "documento"]].rename(
             columns={"fecha": "Fecha", "valor": "Valor", "tipo": "Tipo", "descripcion": "Descripción",
                      "comprobante": "Comprobante", "documento": "Documento"})
+        mostrar["Descripción"] = df_solo_libro.apply(descripcion_con_arrastre, axis=1)
         filtrado = filtrar(mostrar, "solo_libro", "Fecha", ["Descripción", "Comprobante", "Documento"],
                             columna_tipo="Tipo", permitir_orden=True)
         barra_resultado(filtrado, mostrar, "CONCILIACIÓN BANCARIA — PENDIENTES DEL LIBRO AUXILIAR",
@@ -683,8 +700,10 @@ elif vista == HOJAS[5]:
 # =========================================== HOJA 7 · CONCILIACIÓN MANUAL ==
 else:
     section("Conciliación manual",
-            "Selecciona movimientos de cada lado y presiona Cruzar. Si los totales no "
-            "coinciden, el cruce se hace igual y queda en «Cruzados con diferencia»")
+            "Selecciona movimientos de uno o de los dos lados y presiona Cruzar — también "
+            "sirve para cruzar 2 o más movimientos del MISMO lado entre sí (ej. un pago y su "
+            "devolución). Si los totales no coinciden, el cruce se hace igual y queda en "
+            "«Cruzados con diferencia»")
 
     if st.session_state.get("aviso"):
         st.success(st.session_state.pop("aviso"))
@@ -711,6 +730,8 @@ else:
         mostrar = filtrado[columnas].rename(columns={
             "fecha": "Fecha", "valor": "Valor", "tipo": "Tipo", "descripcion": "Descripción",
             "comprobante": "Comprobante", "documento": "Documento"})
+        if "descripcion" in columnas:
+            mostrar["Descripción"] = filtrado.apply(descripcion_con_arrastre, axis=1)
         ev = st.dataframe(
             mostrar, use_container_width=True, hide_index=True, height=430, row_height=34,
             on_select="rerun", selection_mode="multi-row", key=f"sel_{key}_{gen}",
@@ -740,9 +761,14 @@ else:
 
     st.divider()
     dif_sel = round(total_sel_banco - total_sel_libro, 2)
-    hay_seleccion = bool(ids_banco) and bool(ids_libro)
-    # Ya NO bloquea el cruce: solo cambia a qué hoja va a parar (ver más abajo). El botón
-    # Cruzar se habilita con solo tener selección en los dos lados.
+    # Con "or" (no "and"): también deja cruzar movimientos de UN SOLO lado entre sí (ej. un
+    # pago del banco y su devolución, ambos pendientes solo del lado del banco). El botón
+    # Cruzar se habilita con tener selección en cualquiera de los dos paneles.
+    hay_seleccion = bool(ids_banco) or bool(ids_libro)
+    solo_un_lado = hay_seleccion and (not ids_banco or not ids_libro)
+    lado_solo = ("del banco" if ids_banco else "de contabilidad") if solo_un_lado else ""
+    n_lado_solo = (len(ids_banco) or len(ids_libro)) if solo_un_lado else 0
+    total_lado_solo = (total_sel_banco if ids_banco else total_sel_libro) if solo_un_lado else 0.0
     coinciden = hay_seleccion and abs(dif_sel) < 0.005
 
     stat_cards([
@@ -753,34 +779,54 @@ else:
         {"label": "Diferencia", "value": ("Sin diferencia" if coinciden else f"{abs(dif_sel):,.2f}"),
          "icon": (icono("check") if coinciden else icono("alerta")), "accent": (VERDE if coinciden else NARANJA),
          "sub": ("Los valores coinciden" if coinciden
-                 else ("Selecciona en ambos lados" if not hay_seleccion
-                       else f"Se cruzará en «Cruzados con diferencia»"))},
+                 else ("Selecciona en algún panel" if not hay_seleccion
+                       else "Se cruzará en «Cruzados con diferencia»"))},
     ])
 
-    if coinciden:
+    if solo_un_lado and coinciden:
+        st.success(f"**Los movimientos seleccionados se anulan entre sí** — {n_lado_solo} "
+                   f"movimiento(s) {lado_solo} por ${abs(total_lado_solo):,.2f} netos, sin nada "
+                   "del otro lado. Al cruzarlos quedarán en **Conciliados**.")
+    elif coinciden:
         st.success(f"**Los valores coinciden** — {len(ids_banco)} movimiento(s) del banco por "
                    f"${abs(total_sel_banco):,.2f} contra {len(ids_libro)} de contabilidad. "
                    "Al cruzarlos quedarán en **Conciliados**.")
+    elif solo_un_lado:
+        st.warning(f"**Diferencia de ${abs(dif_sel):,.2f} entre los movimientos {lado_solo} "
+                   "seleccionados** — puedes cruzarlos igual: quien concilia decide. Quedarán "
+                   "en la hoja **Cruzados con diferencia** para revisión.")
     elif hay_seleccion:
         st.warning(f"**Diferencia de ${abs(dif_sel):,.2f}** — puedes cruzar igual: quien concilia "
                    "decide. El registro quedará en la hoja **Cruzados con diferencia**, con los dos "
                    "valores y la diferencia visibles para revisión.")
     else:
-        st.info("Selecciona al menos un movimiento en cada panel para poder cruzarlos.")
+        st.info("Selecciona al menos un movimiento en cualquiera de los dos paneles para poder "
+                 "cruzarlos (puedes cruzar movimientos de un solo lado entre sí, por ejemplo un "
+                 "pago y su devolución).")
 
     col_b1, _ = st.columns([1, 3])
     with col_b1:
-        # `disabled` ya no exige que coincidan los valores: solo que haya selección en los
-        # dos lados. Quien concilia decide si un cruce con diferencia es correcto; queda
-        # registrado en "Cruzados con diferencia" para poder revisarlo después (ver
-        # `construir_vistas` en conciliacion.py).
+        # `disabled` ya no exige que coincidan los valores ni que haya selección en los dos
+        # lados: alcanza con tener algo seleccionado en cualquiera de los dos paneles. Quien
+        # concilia decide si un cruce con diferencia es correcto; queda registrado en
+        # "Cruzados con diferencia" para poder revisarlo después (ver `construir_vistas`).
         if st.button(":material/compare_arrows: Cruzar", type="primary", disabled=not hay_seleccion,
                      use_container_width=True, key="btn_cruzar"):
             nuevos, nuevo_id = crear_cruce_manual(cruces, ids_banco, ids_libro)
             st.session_state["estado"]["cruces"] = nuevos
             db.guardar_cambios(st.session_state["estado"]["periodo"], st.session_state["estado"])
             st.session_state["gen"] += 1
-            if coinciden:
+            if solo_un_lado and coinciden:
+                st.session_state["aviso"] = (
+                    f"Conciliación **{nuevo_id}** creada: {n_lado_solo} movimiento(s) {lado_solo} "
+                    f"que se anulan entre sí por \\${abs(total_lado_solo):,.2f} — quedó en "
+                    "**Conciliados**.")
+            elif solo_un_lado:
+                st.session_state["aviso"] = (
+                    f"Conciliación **{nuevo_id}** creada: {n_lado_solo} movimiento(s) {lado_solo} "
+                    f"(\\${total_lado_solo:,.2f} en total), diferencia de \\${abs(dif_sel):,.2f} "
+                    "entre ellos — quedó en **Cruzados con diferencia**.")
+            elif coinciden:
                 st.session_state["aviso"] = (
                     f"Conciliación **{nuevo_id}** creada: {len(ids_banco)} movimiento(s) del banco "
                     f"con {len(ids_libro)} de contabilidad por ${abs(total_sel_banco):,.2f} — "

@@ -90,15 +90,47 @@ def guardar_cambios(periodo, estado):
     cliente.table(TABLA).update(fila).eq("periodo", periodo).execute()
 
 
+def guardar_cierre(periodo, estado, pendientes_banco, pendientes_libro):
+    """Como `guardar_cambios`, pero además guarda los pendientes que quedaron AL CERRAR este
+    período — solo los nativos de este mes, ver `conciliacion.pendientes_nativos` — para poder
+    arrastrarlos al mes siguiente cuando se carguen sus archivos (ver `ultimo_cierre` y
+    `conciliacion.agregar_arrastre`). Se llama una vez, justo cuando se marca "terminada".
+
+    No lanza si las columnas `pendientes_banco`/`pendientes_libro` todavía no existen en
+    Supabase (hay que agregarlas a mano, ver el `.sql` en `documentos/`): el cierre no debe
+    perderse solo porque no se pudo guardar el arrastre."""
+    cliente = _cliente()
+    if cliente is None or not periodo:
+        return
+    fila = _fila_liviana(estado)
+    fila["pendientes_banco"] = pendientes_banco.to_json(orient="split", date_format="iso")
+    fila["pendientes_libro"] = pendientes_libro.to_json(orient="split", date_format="iso")
+    try:
+        cliente.table(TABLA).update(fila).eq("periodo", periodo).execute()
+    except Exception:
+        del fila["pendientes_banco"], fila["pendientes_libro"]
+        cliente.table(TABLA).update(fila).eq("periodo", periodo).execute()
+
+
 def ultimo_cierre():
     """El cierre más reciente (una conciliación marcada como terminada a propósito), para
-    sugerir su saldo final del banco como saldo inicial del mes siguiente. A diferencia del
-    resto del estado, esto NO se guarda solo: el usuario decide cuándo un mes queda cerrado."""
+    sugerir su saldo final del banco como saldo inicial del mes siguiente, y para arrastrar
+    sus pendientes nativos (ver `conciliacion.agregar_arrastre`). A diferencia del resto del
+    estado, esto NO se guarda solo: el usuario decide cuándo un mes queda cerrado.
+
+    No lanza si `pendientes_banco`/`pendientes_libro` todavía no existen en Supabase (columnas
+    nuevas, hay que agregarlas a mano): sin ellas simplemente no hay nada que arrastrar."""
     cliente = _cliente()
     if cliente is None:
         return None
-    res = (cliente.table(TABLA).select("periodo, saldo_final_banco, saldo_final_libro, cerrado_en")
-           .eq("cerrado", True).order("cerrado_en", desc=True).limit(1).execute())
+    try:
+        res = (cliente.table(TABLA)
+               .select("periodo, saldo_final_banco, saldo_final_libro, cerrado_en, "
+                       "pendientes_banco, pendientes_libro")
+               .eq("cerrado", True).order("cerrado_en", desc=True).limit(1).execute())
+    except Exception:
+        res = (cliente.table(TABLA).select("periodo, saldo_final_banco, saldo_final_libro, cerrado_en")
+               .eq("cerrado", True).order("cerrado_en", desc=True).limit(1).execute())
     return res.data[0] if res.data else None
 
 

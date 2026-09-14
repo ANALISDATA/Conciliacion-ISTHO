@@ -903,11 +903,24 @@ def tabla(df, height=780, row_height=34, ocultar=OCULTAR_EN_PANTALLA):
     contenido y alto generoso, para ver la mayor cantidad de movimientos de una sola vez.
     `ocultar` quita de la vista las columnas accesorias (siguen en el Excel)."""
     df = df.drop(columns=[c for c in ocultar if c in df.columns], errors="ignore").copy()
-    # Las celdas vacías llegan como NaN y Streamlit las dibuja como "None", que en un informe
-    # contable se lee como un dato. Se convierten a texto vacío. Ojo: en pandas 3 `astype(str)`
-    # deja los NaN intactos, por eso la conversión se hace valor por valor.
+    # Las celdas vacías llegan como NaN/NaT y Streamlit las dibuja como el texto "None", que en
+    # un informe contable se lee como un dato. Se convierten a texto vacío. Ojo: en pandas 3
+    # `astype(str)` deja los NaN intactos, por eso la conversión se hace valor por valor.
+    #
+    # Las columnas de fecha se dejan aparte porque normalmente NO tienen nulos (un solo cruce
+    # 1↔1/1↔N/N↔1 siempre tiene una fecha real de cada lado) y conviene que las pinte
+    # `DateColumn`, con su formato dd/mm/aaaa. Pero un cruce manual N↔M o de un solo lado (ver
+    # `crear_cruce_manual`) no tiene UNA fecha que mostrar y queda en NaT — ahí SÍ hay que
+    # convertir a texto (fecha formateada a mano, vacío en el NaT), porque `DateColumn` pinta un
+    # NaT exactamente igual que un `None`: como el texto "None", no en blanco.
+    fechas_a_texto = set()
     for col in df.columns:
-        if col.lower() in _COLS_FECHA or is_numeric_dtype(df[col]):
+        if col.lower() in _COLS_FECHA:
+            if df[col].isna().any():
+                fechas_a_texto.add(col)
+                df[col] = df[col].map(lambda v: "" if pd.isna(v) else pd.Timestamp(v).strftime("%d/%m/%Y"))
+            continue
+        if is_numeric_dtype(df[col]):
             continue
         df[col] = df[col].map(lambda v: "" if pd.isna(v) else str(v))
 
@@ -915,7 +928,7 @@ def tabla(df, height=780, row_height=34, ocultar=OCULTAR_EN_PANTALLA):
     for col in df.columns:
         key = col.lower()
         ancho = _ANCHOS.get(key)
-        if key in _COLS_FECHA:
+        if key in _COLS_FECHA and col not in fechas_a_texto:
             column_config[col] = st.column_config.DateColumn(col, format="DD/MM/YYYY", width=ancho)
         elif key in _COLS_MONEDA:
             column_config[col] = st.column_config.NumberColumn(col, format="accounting", width=ancho)

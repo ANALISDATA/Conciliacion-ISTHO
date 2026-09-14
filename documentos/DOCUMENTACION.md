@@ -342,9 +342,37 @@ Validado contra el extracto real de Junio 2026 — **coincide al centavo**:
 | **Saldo final** | **201.609.186,24** | **SALDO ACTUAL** |
 
 ### Cruce manual
-Permite cualquier combinación (1↔1, 1↔N, N↔1, N↔M). Los totales de cada lado se recalculan al
-seleccionar y **el botón Cruzar solo se habilita cuando ambos totales son exactamente iguales**;
-si no, muestra la diferencia en rojo. Al cruzar se genera un ID `M-xxxx` con fecha y hora.
+Permite cualquier combinación (1↔1, 1↔N, N↔1, N↔M) **y también dejar un lado vacío**: cruzar 2
+o más movimientos del MISMO lado entre sí (ej. un pago que se hace y luego se devuelve, ambos
+en el extracto, sin ningún registro contable de por medio — al final no representan ningún
+movimiento real). El botón Cruzar se habilita con solo tener selección en cualquiera de los dos
+paneles; si los totales seleccionados no coinciden exactamente, el cruce se hace igual y queda
+en **Cruzados con diferencia** (quien concilia decide). Al cruzar se genera un ID `M-xxxx` con
+fecha y hora.
+
+### Arrastre de pendientes al mes siguiente
+Al **cerrar** un mes (botón "Marcar esta conciliación como terminada"), además del saldo final
+se guardan en Supabase los pendientes que quedaron — pero solo los **nacidos ese mismo mes**
+(`conciliacion.pendientes_nativos`), en las columnas `pendientes_banco`/`pendientes_libro` de la
+tabla `conciliaciones` (hay que agregarlas a mano una vez, ver
+`documentos/agregar_columnas_arrastre.sql`).
+
+Cuando se carga un mes nuevo (botón Conciliar), esos pendientes se agregan a `df_banco`/
+`df_libro` **antes** de correr el motor (`conciliacion.agregar_arrastre`), para que el cruce
+automático y el manual también los tengan en cuenta contra los movimientos que se acaban de
+cargar — típico de un pago de fin de mes que se contabiliza al mes siguiente.
+
+Se etiquetan con la columna `arrastre_de` (período de origen) y, en pantalla, con el prefijo
+**«[Arrastre \<período\>]»** delante de la descripción (`conciliacion.descripcion_con_arrastre`)
+para que salte a la vista que no son de este mes — se ve así en Pend. extracto, Pend. libro
+auxiliar, Cruce manual, Conciliados y Cruzados con diferencia. Ese prefijo es **solo visual**:
+nunca se usa en la validación de nombre (`_validar_nombre` sigue comparando `descripcion`/
+`beneficiario` sin el prefijo), para no ensuciar el motor de cruce.
+
+**El arrastre dura una sola vuelta a propósito.** Un pendiente que llega arrastrado y tampoco
+cruza en su mes nuevo se queda ahí, marcado, pero no se vuelve a incluir en lo que se guarda al
+cerrar ESE mes — así nunca viaja a un tercer mes; si sigue sin cruzar, alguien tiene que
+resolverlo a mano (por ejemplo con un cruce manual del mismo lado, ver arriba).
 
 ---
 
@@ -448,7 +476,8 @@ Forzar estos cruces escondería una diferencia real.
 
 ## 11. Ideas pendientes
 
-- Guardar el estado de la conciliación en disco para retomarla en otra sesión (hoy vive en
-  memoria y se pierde al cerrar la app).
-- Conciliar varios meses seguidos arrastrando las partidas pendientes del mes anterior.
+- ~~Guardar el estado de la conciliación en disco para retomarla en otra sesión~~ — hecho, ver
+  `db.py` (Supabase).
+- ~~Conciliar varios meses seguidos arrastrando las partidas pendientes del mes anterior~~ —
+  hecho, ver "Arrastre de pendientes al mes siguiente" en la sección 6.
 - Permitir confirmar directamente un «posible» como conciliado desde su propia hoja.
