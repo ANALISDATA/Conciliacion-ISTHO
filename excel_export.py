@@ -15,9 +15,11 @@ from config import CUENTA_DEFECTO, EMPRESA, NIT  # noqa: E402  (re-exportados po
 MESES = {1: "Enero", 2: "Febrero", 3: "Marzo", 4: "Abril", 5: "Mayo", 6: "Junio",
          7: "Julio", 8: "Agosto", 9: "Septiembre", 10: "Octubre", 11: "Noviembre", 12: "Diciembre"}
 
-COLOR_OSCURO = "#132A20"
-COLOR_VERDE = "#4CAF50"
-COLOR_NARANJA = "#E8772E"
+# Misma paleta que la app (ver AZUL/AZUL_OSC/NARANJA en ui.py) — antes el membrete y los
+# encabezados de tabla usaban un verde/oscuro que no correspondía con nada de la interfaz.
+COLOR_OSCURO = "#16307A"   # = AZUL_OSC en ui.py
+COLOR_VERDE = "#1D4ED8"    # = AZUL en ui.py (el nombre queda por no tocar el resto del archivo)
+COLOR_NARANJA = "#E08700"  # = NARANJA en ui.py
 COLOR_GRIS_CLARO = "#F2F2F2"
 
 
@@ -84,8 +86,15 @@ def _encabezado(workbook, worksheet, titulo, meta, n_columnas):
     return fmts, 6
 
 
-def _escribir_tabla(worksheet, fmts, start_row, columnas, df):
-    """columnas: lista de tuplas (titulo, campo, tipo) tipo en {'texto','moneda','fecha','entero'}."""
+def _escribir_tabla(worksheet, fmts, start_row, columnas, df, congelar_y_filtrar=True):
+    """columnas: lista de tuplas (titulo, campo, tipo) tipo en {'texto','moneda','fecha','entero'}.
+
+    `congelar_y_filtrar=False` en el informe completo (`build_resumen_completo_workbook`):
+    ahí se escriben 3 tablas en la MISMA hoja, y tanto `autofilter` como `freeze_panes` son de
+    hoja completa — llamarlos una vez por sección hace que solo quede el de la ÚLTIMA, y como
+    esa suele caer casi al final de la hoja, el panel "congelado" terminaba tapando casi todo
+    el informe (se veía la primera pantalla y no dejaba bajar más). El informe completo congela
+    una sola vez, debajo del membrete, ver `build_resumen_completo_workbook`."""
     for c, (titulo, _, _) in enumerate(columnas):
         worksheet.write(start_row, c, titulo, fmts["header"])
     worksheet.set_row(start_row, 24)
@@ -116,9 +125,10 @@ def _escribir_tabla(worksheet, fmts, start_row, columnas, df):
                                         fmts["celda_gris" if gris else "celda"])
         r += 1
 
-    if r > start_row + 1:
-        worksheet.autofilter(start_row, 0, r - 1, len(columnas) - 1)
-    worksheet.freeze_panes(start_row + 1, 0)
+    if congelar_y_filtrar:
+        if r > start_row + 1:
+            worksheet.autofilter(start_row, 0, r - 1, len(columnas) - 1)
+        worksheet.freeze_panes(start_row + 1, 0)
     return r
 
 
@@ -249,11 +259,14 @@ def _a_columnas_resumen(df, estado, campo_valor=None):
 
 def _escribir_seccion(worksheet, fmts, start_row, titulo, df, n_columnas):
     """Una franja con el nombre de la sección (fila que se puede borrar entera) seguida de
-    su tabla. Devuelve la fila siguiente libre."""
+    su tabla. Sin autofilter/freeze propios (`congelar_y_filtrar=False`): eso se decide una
+    sola vez para toda la hoja, ver `build_resumen_completo_workbook`. Devuelve la fila
+    siguiente libre."""
     worksheet.set_row(start_row, 22)
     worksheet.merge_range(start_row, 0, start_row, n_columnas - 1,
                            f"{titulo}  ({len(df)} movimiento(s))", fmts["total_label"])
-    fin = _escribir_tabla(worksheet, fmts, start_row + 1, _COLUMNAS_RESUMEN, df)
+    fin = _escribir_tabla(worksheet, fmts, start_row + 1, _COLUMNAS_RESUMEN, df,
+                           congelar_y_filtrar=False)
     return fin + 1  # una fila de aire antes de la siguiente sección
 
 
@@ -269,6 +282,11 @@ def build_resumen_completo_workbook(df_conc, df_dif, df_posibles, meta):
     fmts, siguiente = _encabezado(workbook, ws, "CONCILIACIÓN BANCARIA — INFORME COMPLETO",
                                    meta, n_columnas)
     siguiente += 1
+    # Un solo congelado para TODA la hoja, justo debajo del membrete — así el membrete queda
+    # fijo arriba y el resto (las 3 secciones completas) se desplaza libremente. Antes cada
+    # sección congelaba la suya y solo quedaba la última, que caía casi al final de la hoja y
+    # dejaba ver "solo la pantalla principal" sin poder bajar más.
+    ws.freeze_panes(siguiente, 0)
 
     secciones = [
         ("CONCILIADOS", _a_columnas_resumen(df_conc, "Conciliado", campo_valor="Valor")),
